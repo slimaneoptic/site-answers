@@ -98,6 +98,7 @@
 			(res.sources || []).forEach(function (s) { byN[s.n] = s; });
 			String(res.answer || '').split(/\n+/).forEach(function (line) {
 				if (!line.trim()) { return; }
+				line = line.replace(/^\s*[*-]\s+/, '• '); // Markdown bullets read as plain bullets.
 				var p = el('p');
 				line.split(/(\[\d+(?:\s*,\s*\d+)*\]|\*\*[^*\n]+\*\*)/).forEach(function (part) {
 					var m = /^\[([\d,\s]+)\]$/.exec(part);

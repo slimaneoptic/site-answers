@@ -52,7 +52,13 @@ function site_answers_uninstall_site() {
 }
 
 if ( is_multisite() ) {
-	foreach ( get_sites( array( 'fields' => 'ids' ) ) as $site_answers_blog ) {
+	$site_answers_blogs = get_sites(
+		array(
+			'fields' => 'ids',
+			'number' => 0,
+		)
+	);
+	foreach ( $site_answers_blogs as $site_answers_blog ) {
 		switch_to_blog( $site_answers_blog );
 		site_answers_uninstall_site();
 		restore_current_blog();
