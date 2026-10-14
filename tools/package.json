@@ -1,0 +1,9 @@
+{
+  "name": "site-answers-dev-tools",
+  "private": true,
+  "description": "Dev-only tools for testing the Site Answers plugin (WordPress Playground CLI and PHP-WASM). Not part of the plugin.",
+  "devDependencies": {
+    "@wp-playground/cli": "3.1.58",
+    "@php-wasm/cli": "3.1.58"
+  }
+}

@@ -1,0 +1,7 @@
+tools/node_modules/
+tools/package-lock.json
+tests/out/
+dist/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,21 @@
+/* Site Answers settings page. */
+.site-answers-admin .sa-lead{max-width:760px;font-size:14px}
+.site-answers-admin .sa-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;max-width:1200px;margin:16px 0 8px}
+.site-answers-admin .sa-card{background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:4px 18px 16px;box-shadow:0 1px 1px rgba(0,0,0,.04)}
+.site-answers-admin .sa-card h2{font-size:15px;margin:14px 0 10px}
+.site-answers-admin .sa-status{border-collapse:collapse;margin:0 0 14px;width:100%}
+.site-answers-admin .sa-status th,.site-answers-admin .sa-status td{text-align:start;padding:5px 12px 5px 0;vertical-align:top;border-bottom:1px solid #f0f0f1}
+.site-answers-admin .sa-status th{width:38%;font-weight:600;color:#50575e}
+.site-answers-admin .sa-test{display:flex;gap:8px;flex-wrap:wrap}
+.site-answers-admin .sa-test input[type=text]{flex:1;min-width:200px}
+.site-answers-admin .sa-test-result{margin-top:12px}
+.site-answers-admin .sa-test-result h3{font-size:13px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.03em;color:#50575e}
+.site-answers-admin .sa-answer{white-space:pre-line;background:#f6f7f7;border-inline-start:4px solid #1f6f5c;padding:10px 12px}
+.site-answers-admin .sa-passages{margin:0 0 0 1.4em}
+.site-answers-admin .sa-passages li{margin-bottom:10px}
+.site-answers-admin .sa-score{color:#646970;font-size:12px}
+.site-answers-admin .sa-passage{margin:4px 0 0;color:#3c434a;font-size:12.5px;white-space:pre-line;max-height:7.5em;overflow:hidden}
+.site-answers-admin .sa-error{color:#b32d2e}
+.site-answers-admin .sa-key-state{margin:6px 0 0}
+.site-answers-admin .sa-key-state .dashicons{color:#00a32a}
+.site-answers-admin .sa-type{display:inline-block;margin:0 18px 6px 0}
