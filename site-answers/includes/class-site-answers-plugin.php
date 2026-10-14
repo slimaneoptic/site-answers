@@ -30,8 +30,6 @@ class Site_Answers_Plugin {
 	 * Hooks.
 	 */
 	public static function init() {
-		load_plugin_textdomain( 'site-answers', false, dirname( plugin_basename( SITE_ANSWERS_FILE ) ) . '/languages' );
-
 		Site_Answers_Index::init();
 		Site_Answers_Rest::init();
 		Site_Answers_Frontend::init();
@@ -42,6 +40,7 @@ class Site_Answers_Plugin {
 		add_action( self::CRON_DAILY, array( __CLASS__, 'cron_daily' ) );
 		add_action( self::CRON_CONTINUE, array( __CLASS__, 'cron_continue' ) );
 		add_action( self::CRON_QUEUE, array( 'Site_Answers_Index', 'process_queue' ) );
+		add_action( 'init', array( __CLASS__, 'maybe_set_up_site' ) );
 	}
 
 	/**
@@ -85,11 +84,51 @@ class Site_Answers_Plugin {
 	 * @return string
 	 */
 	public static function api_key() {
-		if ( defined( 'SITE_ANSWERS_API_KEY' ) && is_string( SITE_ANSWERS_API_KEY ) && '' !== trim( SITE_ANSWERS_API_KEY ) ) {
+		if ( self::key_from_config() ) {
 			return trim( SITE_ANSWERS_API_KEY );
 		}
-		$key = get_option( self::KEY, '' );
-		return is_string( $key ) ? trim( $key ) : '';
+		$key = self::stored_key();
+		return isset( $key['k'] ) ? $key['k'] : '';
+	}
+
+	/**
+	 * Is the key set in wp-config.php (SITE_ANSWERS_API_KEY)?
+	 *
+	 * @return bool
+	 */
+	public static function key_from_config() {
+		return defined( 'SITE_ANSWERS_API_KEY' ) && is_string( SITE_ANSWERS_API_KEY ) && '' !== trim( SITE_ANSWERS_API_KEY );
+	}
+
+	/**
+	 * The saved key as stored: array( 'k' => key ), or an empty array. Stored as an array so that the
+	 * wp-admin/options.php screen shows "SERIALIZED DATA" instead of the key. Older versions saved a plain string.
+	 *
+	 * @return array
+	 */
+	public static function stored_key() {
+		$key = get_option( self::KEY, array() );
+		if ( is_string( $key ) ) {
+			$key = array( 'k' => $key );
+		}
+		$key = is_array( $key ) && isset( $key['k'] ) && is_string( $key['k'] ) ? trim( $key['k'] ) : '';
+		return '' !== $key ? array( 'k' => $key ) : array();
+	}
+
+	/**
+	 * AI base URL. A key set in wp-config.php only goes to the address set next to it (SITE_ANSWERS_BASE_URL) or to
+	 * the default service, never to an address saved in the settings: on a network, a site administrator could
+	 * otherwise send the network's key to a server of their choice.
+	 *
+	 * @return string Without a trailing slash.
+	 */
+	public static function base_url() {
+		if ( self::key_from_config() ) {
+			$url = defined( 'SITE_ANSWERS_BASE_URL' ) && is_string( SITE_ANSWERS_BASE_URL ) && '' !== trim( SITE_ANSWERS_BASE_URL ) ? trim( SITE_ANSWERS_BASE_URL ) : self::DEFAULT_BASE_URL;
+		} else {
+			$url = (string) self::settings()['base_url'];
+		}
+		return untrailingslashit( $url );
 	}
 
 	/**
@@ -114,20 +153,21 @@ class Site_Answers_Plugin {
 			return null;
 		}
 		return array(
-			'title' => wp_strip_all_tags( get_the_title( $post ) ),
+			'title' => Site_Answers_Text::plain( get_the_title( $post ) ),
 			'url'   => get_permalink( $post ),
 		);
 	}
 
 	/**
 	 * Activation: options that must not autoload, the daily safety rebuild and a first index.
+	 *
+	 * @param bool $network_wide Activated for every site of a network.
 	 */
-	public static function activate() {
-		// Created with autoload off before any save, so later updates keep it off.
-		add_option( self::KEY, '', '', false );
-		add_option( self::LAST_ERR, array(), '', false );
-		add_option( Site_Answers_Index::QUEUE, array(), '', false );
-
+	public static function activate( $network_wide = false ) {
+		if ( is_multisite() && $network_wide ) {
+			return; // Each site sets itself up on its next request (maybe_set_up_site), not all in this one.
+		}
+		self::add_options();
 		if ( ! wp_next_scheduled( self::CRON_DAILY ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', self::CRON_DAILY );
 		}
@@ -136,9 +176,55 @@ class Site_Answers_Plugin {
 	}
 
 	/**
-	 * Deactivation: stop the scheduled jobs (data stays until the plugin is deleted).
+	 * Options created with autoload off before any save, so later updates keep it off.
 	 */
-	public static function deactivate() {
+	private static function add_options() {
+		add_option( self::KEY, array(), '', false );
+		add_option( self::LAST_ERR, array(), '', false );
+		add_option( Site_Answers_Index::QUEUE, array(), '', false );
+	}
+
+	/**
+	 * A site where the plugin runs but was never set up (network activation, a site created after it): add the
+	 * options and schedule the daily rebuild, which builds the first index at the next cron run (or at the first
+	 * question, see Site_Answers_Index::catch_up()).
+	 */
+	public static function maybe_set_up_site() {
+		if ( wp_installing() || wp_next_scheduled( self::CRON_DAILY ) ) {
+			return;
+		}
+		self::add_options();
+		wp_schedule_event( Site_Answers_Index::meta()['gen'] ? time() + HOUR_IN_SECONDS : time(), 'daily', self::CRON_DAILY );
+	}
+
+	/**
+	 * Deactivation: stop the scheduled jobs (data stays until the plugin is deleted), on every site of a network
+	 * when it was deactivated for the network.
+	 *
+	 * @param bool $network_wide Deactivated for every site of a network.
+	 */
+	public static function deactivate( $network_wide = false ) {
+		if ( is_multisite() && $network_wide ) {
+			$sites = get_sites(
+				array(
+					'fields' => 'ids',
+					'number' => 0,
+				)
+			);
+			foreach ( $sites as $site_id ) {
+				switch_to_blog( $site_id );
+				self::clear_cron();
+				restore_current_blog();
+			}
+			return;
+		}
+		self::clear_cron();
+	}
+
+	/**
+	 * Remove the plugin's scheduled jobs on the current site.
+	 */
+	private static function clear_cron() {
 		wp_clear_scheduled_hook( self::CRON_DAILY );
 		wp_clear_scheduled_hook( self::CRON_CONTINUE );
 		wp_clear_scheduled_hook( self::CRON_QUEUE );

@@ -90,7 +90,14 @@ class Site_Answers_Frontend {
 			'demo'         => $demo,
 			/** This filter is documented in readme.txt (Developers). */
 			'demoEndpoint' => $demo ? esc_url_raw( (string) apply_filters( 'site_answers_demo_endpoint', SITE_ANSWERS_DEMO_ENDPOINT ) ) : '',
-			'title'        => wp_strip_all_tags( get_bloginfo( 'name' ) ),
+			/**
+			 * Filters the origins where the demo AI answers (the online demo). Elsewhere a failed call to it means
+			 * "this site is not the online demo"; there it means "the demo AI is down right now".
+			 *
+			 * @param string[] $origins Origins such as "https://playground.wordpress.net".
+			 */
+			'demoOrigins'  => $demo ? array_values( array_map( 'strval', (array) apply_filters( 'site_answers_demo_origins', array( 'https://playground.wordpress.net' ) ) ) ) : array(),
+			'title'        => Site_Answers_Text::plain( get_bloginfo( 'name' ) ),
 			'greeting'     => Site_Answers_Plugin::greeting(),
 			'starters'     => array_values( array_filter( array_map( 'trim', $s['starters'] ) ) ),
 			'contact'      => Site_Answers_Plugin::contact(),
@@ -106,6 +113,7 @@ class Site_Answers_Frontend {
 				'error'       => __( 'Something went wrong. Please try again.', 'site-answers' ),
 				'contact'     => __( 'Contact us', 'site-answers' ),
 				'demoOnly'    => __( 'The free demo AI only works in the online demo. Add your AI key in Settings > Site Answers.', 'site-answers' ),
+				'demoDown'    => __( 'The demo AI did not answer just now. Here are the matching passages.', 'site-answers' ),
 				'footer'      => __( 'Answers come from this site’s pages.', 'site-answers' ),
 			),
 		);

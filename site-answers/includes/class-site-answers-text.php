@@ -40,17 +40,27 @@ class Site_Answers_Text {
 	 * Each line: trigger words => extra words. Applied to questions only, never to page text.
 	 */
 	const SYNONYMS = array(
-		'cost costs price prices pricing fee fees tarif tarifs prix coût coûts سعر ثمن أسعار بكم' => 'price pricing tarif prix سعر ثمن',
+		'cost costs price prices pricing fee fees tarif tarifs prix coût coûts سعر ثمن أسعار بكم تكلفة كلفة' => 'price pricing tarif prix سعر ثمن',
 		'hours opening open horaires ouverture ساعات أوقات توقيت' => 'open opening hour am pm horaires ouvert ساعات',
 		'contact reach call phone email téléphone joindre contacter تواصل اتصل هاتف' => 'contact phone email téléphone call',
 		'shipping ship delivery deliver livraison livrer expédition توصيل شحن الشحن' => 'shipping delivery livraison توصيل شحن',
-		'return returns refund refunds retour retourner remboursement إرجاع إسترجاع استرداد' => 'return refund retour remboursement إرجاع',
+		'return returns refund refunds retour retourner remboursement إرجاع إسترجاع استرداد exchange exchanges swap échange échanger استبدال' => 'return refund retour remboursement إرجاع',
 		'warranty guarantee garantie ضمان'        => 'warranty guarantee garantie ضمان',
 		'location address adresse عنوان موقع'     => 'location address adresse عنوان',
-		'size sizes big large small dimensions measurements wide taille grand حجم مقاس' => 'size dimensions taille',
+		'size sizes big bigger large larger small smaller dimensions measurements wide taille grand حجم مقاس' => 'size dimensions taille',
 		'weight weigh heavy poids lourd وزن ثقيل' => 'weight poids',
 		'stock available availability disponible disponibilité متوفر' => 'stock availability',
 		'colour colours color colors couleur couleurs لون ألوان' => 'colour color couleur',
+		'uk britain british england بريطانيا'     => 'united kingdom',
+		'europe eu أوروبا'                        => 'european union',
+		'usa america أمريكا'                      => 'united states',
+		'canada كندا'                             => 'canada',
+		'furniture meuble meubles أثاث'           => 'furniture',
+		'discount discounts promo promotion promotions coupon coupons deal deals réduction remise تخفيض خصم' => 'sale sales off newsletter',
+		'broken broke stopped faulty defect defective defects repair panne cassé عطل معطل مكسور' => 'warranty faulty defects',
+		'lamp lamps lampe lampes مصباح'           => 'lighting lamp',
+		'dog dogs cat cats pet pets chien chiens chats كلب قطة' => 'pets',
+		'showroom showrooms store stores shop shops boutique magasin visit visiting visitor visitors معرض متجر محل زيارة' => 'showroom store shop visitors',
 	);
 
 	/**
@@ -170,8 +180,10 @@ class Site_Answers_Text {
 	}
 
 	/**
-	 * Shortcodes out, but the text inside enclosing shortcodes kept ("[note]Free returns[/note]" -> "Free returns").
-	 * Core strip_shortcodes() would drop that text, which page builders often wrap in shortcodes.
+	 * Shortcodes still in the text out. The index renders post content first (as a logged-out visitor sees it), so
+	 * this only meets shortcodes in text that was not rendered, such as an excerpt. The text inside an enclosing
+	 * shortcode is dropped, because it may be hidden from visitors ("[members_only]...[/members_only]"), except for
+	 * the layout shortcodes of page builders. Tags of shortcodes whose plugin is not active stay out too.
 	 *
 	 * @param string $content Content.
 	 * @return string
@@ -182,17 +194,24 @@ class Site_Answers_Text {
 		}
 		global $shortcode_tags;
 		if ( ! empty( $shortcode_tags ) && is_array( $shortcode_tags ) ) {
+			/**
+			 * Filters the enclosing shortcodes whose inner text is indexed when they appear in text that is not
+			 * rendered (page-builder layout shortcodes). Inner text of other shortcodes is left out.
+			 *
+			 * @param string[] $tags Shortcode names.
+			 */
+			$keep    = (array) apply_filters( 'site_answers_shortcodes_keep_text', array( 'vc_row', 'vc_row_inner', 'vc_column', 'vc_column_inner', 'vc_column_text', 'et_pb_section', 'et_pb_row', 'et_pb_row_inner', 'et_pb_column', 'et_pb_column_inner', 'et_pb_text' ) );
 			$pattern = get_shortcode_regex();
 			$rounds  = 0;
 			while ( $rounds < 3 && preg_match( "/$pattern/", $content ) ) { // Nested shortcodes need more than one pass.
 				++$rounds;
 				$content = preg_replace_callback(
 					"/$pattern/",
-					static function ( $m ) {
+					static function ( $m ) use ( $keep ) {
 						if ( '[' === $m[1] && ']' === $m[6] ) {
 							return substr( $m[0], 1, -1 ); // A shortcode escaped with double brackets stays as text.
 						}
-						return $m[1] . ' ' . $m[5] . ' ' . $m[6];
+						return $m[1] . ' ' . ( in_array( $m[2], $keep, true ) ? $m[5] . ' ' : '' ) . $m[6];
 					},
 					$content
 				);
@@ -287,11 +306,22 @@ class Site_Answers_Text {
 		return false === $space ? '' : trim( str_replace( "\n", ' ', substr( $tail, $space + 1 ) ) );
 	}
 
+	/**
+	 * A site name or title as plain text: tags removed, HTML entities decoded ("Smith &amp; Sons" -> "Smith & Sons").
+	 * WordPress stores the site name escaped and get_the_title() adds entities.
+	 *
+	 * @param string $text Text that may hold HTML.
+	 * @return string
+	 */
+	public static function plain( $text ) {
+		return trim( html_entity_decode( wp_strip_all_tags( (string) $text ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+	}
+
 	// ------------------------------------------------------------------ Normalisation and tokens.
 
 	/**
-	 * Lower case, accents folded (é -> e), "8am" -> "8 am"; Arabic: no tashkeel or tatweel, أ/إ/آ -> ا,
-	 * ى -> ي, ة -> ه, Arabic-Indic digits -> 0-9.
+	 * Lower case, accents folded (é -> e), "8am" -> "8 am", "8x10" -> "8 x 10"; Arabic: no tashkeel or tatweel,
+	 * أ/إ/آ -> ا, ى -> ي, ة -> ه, Arabic-Indic digits -> 0-9.
 	 *
 	 * @param string $text Text.
 	 * @return string
@@ -304,6 +334,7 @@ class Site_Answers_Text {
 		$text = remove_accents( $text );
 		$text = function_exists( 'mb_strtolower' ) ? mb_strtolower( $text, 'UTF-8' ) : strtolower( $text );
 		$text = preg_replace( '/(\d)(am|pm|h)\b/u', '$1 $2', $text );
+		$text = preg_replace( '/(\d)\s*[x\x{00D7}]\s*(\d)/u', '$1 x $2', $text ); // Sizes such as 8x10 read as 8 x 10.
 		$text = preg_replace( '/[\x{0610}-\x{061A}\x{064B}-\x{065F}\x{0670}\x{06D6}-\x{06DC}\x{06DF}-\x{06E8}\x{06EA}-\x{06ED}\x{0640}]/u', '', $text );
 		return strtr( $text, self::AR_MAP );
 	}

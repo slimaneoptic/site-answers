@@ -34,8 +34,13 @@ def passages(q):
 
 rest("sa-test/v1/settings", {"demo_mode": 1, "ip_per_hour": 1000, "daily_cap": 1000})
 rest("sa-test/v1/run-queue", {})
-st = rest("sa-test/v1/state")["status"]
+st = rest("sa-test/v1/state")
+print(f"PHP {st['php']}  WordPress {st['wp']}")
+st = st["status"]
 check("5 products indexed, the hidden one skipped", st["types"].get("product") == 5, st)
+check("WooCommerce cart, checkout and account pages not indexed (8 demo pages only)", st["types"].get("page") == 8, st)
+titles = {p["title"] for q in ("cart checkout", "my account login", "shop") for p in passages(q)}
+check("no Cart, Checkout or My account passage", not titles & {"Cart", "Checkout", "My account"}, titles)
 
 cases = [
     ("How much is the wool rug?", "Hand-loomed wool rug", ["$159.00 (on sale, regular price $189.00)"]),
@@ -64,7 +69,7 @@ check("new stock status answered after the update", "Availability: In stock" in 
 log = rest("sa-test/v1/debug-log")["log"]
 mine = [l for l in log.splitlines() if "site-answers" in l or "Site_Answers" in l]
 check("no PHP notice from the plugin with WooCommerce active", not mine, mine[:3])
-Path(__file__).resolve().parent.joinpath("out", "e2e-woo.json").write_text(json.dumps(results, indent=1))
+Path(__file__).resolve().parent.joinpath("out", f"e2e-woo-{BASE.rsplit(':', 1)[-1]}.json").write_text(json.dumps(results, indent=1))
 failed = [x for x in results if not x["ok"]]
 print(f"\n{len(results) - len(failed)}/{len(results)} passed")
 sys.exit(1 if failed else 0)

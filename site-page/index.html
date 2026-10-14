@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AI Chatbot for WordPress: Answers From Your Own Pages, With Sources</title>
 <link rel="canonical" href="https://slimanechanchoul.com/wp-chatbot/">
-<meta name="description" content="Site Answers is a WordPress plugin: an AI chatbot that answers visitors from your own pages and products, with sources. It says when it does not know, speaks English, French and Arabic, and runs on your own AI key. Try it in WordPress, in your browser.">
+<meta name="description" content="WordPress chatbot plugin: answers visitors from your own pages and products with numbered sources, in English, French or Arabic. Try it in your browser.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314202B'/%3E%3Cpath d='M7 23 L13 12 L19 19 L25 8' fill='none' stroke='%232A78D6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='7' cy='23' r='2.6' fill='%23fff'/%3E%3Ccircle cx='25' cy='8' r='2.6' fill='%23E8622C'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,21 +17,21 @@
 :root{
   --ink:#14202B;--paper:#F6F8FA;--surface:#FFFFFF;--slate:#5B6B7A;--body:#3A4855;--rule:#D5DBE1;
   --blue:#2A78D6;--blue-soft:#E8F1FB;--orange:#E8622C;--btnbg:#14202B;--btnfg:#FFFFFF;
-  --blue-text:#2468C0;--hover:#EEF2F5;--logo-edge:#D5DBE1;
+  --blue-text:#2468C0;--hover:#EEF2F5;--logo-edge:#D5DBE1;--on-blue:#fff;
   --sh:0 1px 2px rgba(20,32,43,.06),0 6px 20px rgba(20,32,43,.07);
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --ink:#E6EDF3;--paper:#0E151C;--surface:#16202A;--slate:#95A3B1;--body:#C3CDD7;--rule:#2A3743;
   --blue:#5AA2F0;--blue-soft:#15283C;--orange:#F07A48;--btnbg:#E6EDF3;--btnfg:#0E151C;
-  --blue-text:#5AA2F0;--hover:#1D2935;--logo-edge:#3E4F60;
+  --blue-text:#5AA2F0;--hover:#1D2935;--logo-edge:#3E4F60;--on-blue:#0E151C;
   --sh:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.3);
   color-scheme:dark;
 }}
 :root[data-theme="dark"]{
   --ink:#E6EDF3;--paper:#0E151C;--surface:#16202A;--slate:#95A3B1;--body:#C3CDD7;--rule:#2A3743;
   --blue:#5AA2F0;--blue-soft:#15283C;--orange:#F07A48;--btnbg:#E6EDF3;--btnfg:#0E151C;
-  --blue-text:#5AA2F0;--hover:#1D2935;--logo-edge:#3E4F60;
+  --blue-text:#5AA2F0;--hover:#1D2935;--logo-edge:#3E4F60;--on-blue:#0E151C;
   --sh:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.3);
   color-scheme:dark;
 }
@@ -71,7 +71,7 @@ h1{font-size:clamp(30px,4.2vw,44px);line-height:1.12;letter-spacing:-.01em}
 .lead{margin-top:16px;font-size:18px;color:var(--body);max-width:34em}
 .cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:26px}
 .btn{display:inline-flex;align-items:center;gap:8px;min-height:46px;padding:11px 22px 10px;border-radius:999px;font-weight:700;text-decoration:none;font-size:16px}
-.btn-main{background:var(--blue);color:#fff}
+.btn-main{background:var(--blue-text);color:var(--on-blue)}
 .btn-main:hover{filter:brightness(1.08)}
 .btn-line{border:1px solid var(--rule);color:var(--ink);background:var(--surface)}
 .btn-line:hover{background:var(--hover)}
@@ -122,17 +122,20 @@ footer{border-top:1px solid var(--rule);padding:24px;text-align:center;font-size
 <main id="main">
   <div class="hero">
     <div>
-      <p class="eyebrow">WordPress plugin · Site Answers</p>
+      <p class="eyebrow">WordPress plugin: Site Answers</p>
       <h1>AI chatbot for WordPress that answers from your own pages, with sources</h1>
       <p class="lead">Visitors ask a question. The chat finds the right passages on your site and answers from them, with numbered links to the pages it used.</p>
       <div class="cta">
         <a class="btn btn-main" href="https://playground.wordpress.net/?blueprint-url=https://slimanechanchoul.com/wp-chatbot/blueprint.json" target="_blank" rel="noopener">Try it in WordPress</a>
-        <a class="btn btn-line" href="site-answers.zip" download>Download the plugin (zip, 51 KB)</a>
+        <a class="btn btn-line" href="site-answers.zip" download>Download the plugin (zip, 60 KB)</a>
       </div>
-      <p class="cta-note">The button loads a real WordPress in your browser, with a fictional store called Atlas Home. In our test it was ready in about 7 seconds. Then click Ask in the corner. You are logged in as admin there, so you can open Settings &gt; Site Answers too.</p>
+      <p class="cta-note">The button opens a real WordPress site in your browser: a fictional store called Atlas Home. The first load downloads about 30 MB: about 7 seconds on fast internet, longer on a phone. Then click Ask in the corner. You are logged in as admin there, so you can open Settings &gt; Site Answers too. The demo store has pages and posts only; product answers (price, SKU, stock) are covered by the WooCommerce tests.</p>
     </div>
     <figure class="shot">
-      <img src="img/widget-answer.webp" width="1280" height="960" alt="The Atlas Home demo store with the chat open: the visitor asked about the return policy and the answer cites the Returns and refunds page.">
+      <picture>
+        <source media="(max-width:760px)" srcset="img/widget-answer-panel.webp" width="760" height="1200">
+        <img src="img/widget-answer.webp" width="1280" height="960" alt="The Atlas Home demo store with the chat open: the visitor asked about the return policy and the answer cites the Returns and refunds page.">
+      </picture>
     </figure>
   </div>
 
@@ -141,9 +144,9 @@ footer{border-top:1px solid var(--rule);padding:24px;text-align:center;font-size
     <ul class="points">
       <li><strong>Answers from your pages</strong>Pages, posts and WooCommerce products: price, stock, SKU, sizes and descriptions. Every answer links the pages it used.</li>
       <li><strong>Says when it doesn't know</strong>Off-topic questions get "I couldn't find that on this site" and a link to your contact page. No guessing.</li>
-      <li><strong>English, French and Arabic</strong>It answers in the visitor's language, even when your site is in another one. Arabic reads right to left.</li>
-      <li><strong>Runs inside WordPress</strong>With your own AI key: OpenRouter by default, or another OpenAI-compatible API. No extra server, and the key never reaches the browser.</li>
-      <li><strong>Stores no visitor data</strong>No question log, no cookies. Limits per visitor and per day keep your AI bill under control.</li>
+      <li><strong>English, French and Arabic</strong>It replies in the visitor's language. Tested on an English site with French and Arabic questions. Arabic reads right to left.</li>
+      <li><strong>Runs inside WordPress</strong>With your own AI key (OpenRouter by default). No extra server, and the key never reaches the browser.</li>
+      <li><strong>No question log, no cookies</strong>It keeps no questions and sets no cookies. For the per-visitor limit it keeps a salted IP hash for one hour. Limits per visitor and per day keep your AI bill under control.</li>
     </ul>
   </section>
 
@@ -151,7 +154,10 @@ footer{border-top:1px solid var(--rule);padding:24px;text-align:center;font-size
     <h2 id="see">See it</h2>
     <div class="shots">
       <figure class="shot">
-        <img src="img/widget-arabic.webp" width="1280" height="960" loading="lazy" alt="An Arabic question on the English demo store: the answer comes back in Arabic, right to left, with the English source pages listed under it.">
+        <picture>
+          <source media="(max-width:760px)" srcset="img/widget-arabic-panel.webp" width="760" height="1200">
+          <img src="img/widget-arabic.webp" width="1280" height="960" loading="lazy" alt="An Arabic question on the English demo store: the answer comes back in Arabic, right to left, with the English source pages listed under it.">
+        </picture>
         <figcaption>An Arabic question on an English site. The answer comes back in Arabic.</figcaption>
       </figure>
       <figure class="shot">
@@ -168,10 +174,20 @@ footer{border-top:1px solid var(--rule);padding:24px;text-align:center;font-size
       <li>For each question it ranks the passages and keeps only the ones that really match. Nothing relevant means no AI call.</li>
       <li>The AI gets those passages only, and must cite them. You see the numbered sources under the answer.</li>
     </ol>
-    <p class="small">Tested on WordPress 7.1 with PHP 7.4 and 8.3, with WooCommerce products, 10 demo questions in English, French and Arabic, and a phone screen. Source code: <a href="https://github.com/slimaneoptic/site-answers">github.com/slimaneoptic/site-answers</a>. GPL license.</p>
+    <p class="small">Tested on WordPress 7.1 (PHP 7.4 and 8.3) and 6.4 (PHP 7.4), with WooCommerce products (search tests), questions in English, French and Arabic, and a phone screen. Source code: <a href="site-answers.zip">in the zip</a>. GPL license.</p>
+  </section>
+
+  <section aria-labelledby="limits">
+    <h2 id="limits">Limits</h2>
+    <ul class="how">
+      <li>You need an AI key. Each answer is a paid request to your AI service (two for a question in another language that must be translated first); most off-topic questions cost nothing.</li>
+      <li>The online demo uses my demo AI instead, with a small daily limit. When it runs out, the chat shows the matching passages. Its Settings test box shows passages only, because the demo has no key.</li>
+      <li>Text kept only in custom fields is not read (a developer filter can add it).</li>
+      <li>Made for small sites: the whole index is read for each question.</li>
+    </ul>
   </section>
 </main>
 
-<footer>Built by S'limane Chanchoul · <a href="/">More work</a> · <a href="https://www.upwork.com/freelancers/~01d6ae0f1a06a43ac0" target="_blank" rel="noopener noreferrer">Hire me on Upwork</a></footer>
+<footer>Built by S'limane Chanchoul | <a href="/">More work</a> | <a href="https://www.upwork.com/freelancers/~01d6ae0f1a06a43ac0" target="_blank" rel="noopener noreferrer">Hire me on Upwork</a></footer>
 </body>
 </html>

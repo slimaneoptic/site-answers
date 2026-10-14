@@ -12,26 +12,38 @@ defined( 'ABSPATH' ) || exit;
  */
 class Site_Answers_Limits {
 
-	const DAILY = 'site_answers_daily';
+	const DAILY    = 'site_answers_daily'; // Early builds: one option for the day's count (still cleaned up).
+	const USED_DAY = 'site_answers_used_'; // One option per day: AI answers used that day (site time, Ymd).
 
 	/**
 	 * Visitor address for the per-IP limit: REMOTE_ADDR. A visitor can fake forwarding headers, so they are
-	 * only used when the site opts in through the filter (for a proxy or CDN it trusts).
+	 * only used when the site opts in through the filter (for a proxy or CDN it trusts). An IPv6 address counts
+	 * as its /64 network: one connection usually holds a whole /64, so per-address counting would not limit it.
 	 *
 	 * @return string
 	 */
 	public static function client_ip() {
 		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
 		/**
-		 * Filters the visitor IP used for the per-IP limit. Example for a site behind Cloudflare:
-		 * add_filter( 'site_answers_client_ip', function ( $ip ) {
-		 *     return isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ? $_SERVER['HTTP_CF_CONNECTING_IP'] : $ip;
-		 * } );
+		 * Filters the visitor IP used for the per-IP limit. Behind a proxy or CDN, the best fix is the web server's
+		 * real-IP module (nginx real_ip, Apache mod_remoteip) with the proxy's address ranges, so REMOTE_ADDR is
+		 * already the visitor's. Otherwise return here the address from the header your proxy sets, and only when
+		 * REMOTE_ADDR is one of that proxy's addresses: visitors can send any header themselves.
 		 *
 		 * @param string $ip REMOTE_ADDR.
 		 */
 		$ip = (string) apply_filters( 'site_answers_client_ip', $ip );
-		return filter_var( $ip, FILTER_VALIDATE_IP ) ? $ip : 'unknown';
+		if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+			return 'unknown';
+		}
+		$bin = filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) && function_exists( 'inet_pton' ) ? inet_pton( $ip ) : false;
+		if ( is_string( $bin ) && 16 === strlen( $bin ) ) {
+			if ( 0 === strpos( $bin, str_repeat( "\0", 10 ) . "\xff\xff" ) ) {
+				return (string) inet_ntop( substr( $bin, 12 ) ); // An IPv4 address written as IPv6 (::ffff:192.0.2.1).
+			}
+			return inet_ntop( substr( $bin, 0, 8 ) . str_repeat( "\0", 8 ) ) . '/64';
+		}
+		return $ip;
 	}
 
 	/**
@@ -64,26 +76,30 @@ class Site_Answers_Limits {
 	}
 
 	/**
-	 * Use one of today's AI answers for the site. False when the daily cap is reached.
+	 * Use one of today's AI answers for the site. False when the daily cap is reached. The check and the count are
+	 * one SQL statement, so parallel requests cannot pass the cap together.
 	 *
 	 * @return bool
 	 */
 	public static function take_daily() {
-		$cap   = (int) Site_Answers_Plugin::settings()['daily_cap'];
-		$today = current_time( 'Y-m-d' );
-		$day   = get_option( self::DAILY, array() );
-		if ( ! is_array( $day ) || ! isset( $day['day'] ) || $day['day'] !== $today ) {
-			$day = array(
-				'day' => $today,
-				'n'   => 0,
-			);
-		}
-		if ( (int) $day['n'] >= $cap ) {
+		global $wpdb;
+		$cap  = (int) Site_Answers_Plugin::settings()['daily_cap'];
+		$name = self::day_option();
+		if ( $cap <= 0 ) {
 			return false;
 		}
-		++$day['n'];
-		update_option( self::DAILY, $day, false );
-		return true;
+		if ( add_option( $name, '0', '', false ) ) {
+			self::drop_old_days( $name ); // First answer of a new day.
+		}
+		$taken = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Atomic check-and-add; the option cache is cleared below.
+			$wpdb->prepare(
+				"UPDATE {$wpdb->options} SET option_value = option_value + 1 WHERE option_name = %s AND option_value + 0 < %d",
+				$name,
+				$cap
+			)
+		);
+		wp_cache_delete( $name, 'options' );
+		return 1 === (int) $taken;
 	}
 
 	/**
@@ -92,7 +108,33 @@ class Site_Answers_Limits {
 	 * @return int
 	 */
 	public static function used_today() {
-		$day = get_option( self::DAILY, array() );
-		return is_array( $day ) && isset( $day['day'] ) && current_time( 'Y-m-d' ) === $day['day'] ? (int) $day['n'] : 0;
+		return (int) get_option( self::day_option(), 0 );
+	}
+
+	/**
+	 * Option that counts today's AI answers (site time).
+	 *
+	 * @return string
+	 */
+	private static function day_option() {
+		return self::USED_DAY . current_time( 'Ymd' );
+	}
+
+	/**
+	 * Delete the counters of earlier days (and the single counter of early builds).
+	 *
+	 * @param string $today Today's option name.
+	 */
+	private static function drop_old_days( $today ) {
+		global $wpdb;
+		$names = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Once a day, a few rows.
+			$wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $wpdb->esc_like( self::USED_DAY ) . '%' )
+		);
+		foreach ( (array) $names as $name ) {
+			if ( $name !== $today ) {
+				delete_option( $name );
+			}
+		}
+		delete_option( self::DAILY );
 	}
 }

@@ -52,7 +52,7 @@ class Site_Answers_Admin {
 	public static function register() {
 		// Make sure the key option exists with autoload off before options.php first saves it.
 		if ( false === get_option( Site_Answers_Plugin::KEY, false ) ) {
-			add_option( Site_Answers_Plugin::KEY, '', '', false );
+			add_option( Site_Answers_Plugin::KEY, array(), '', false );
 		}
 		register_setting(
 			self::GROUP,
@@ -68,9 +68,9 @@ class Site_Answers_Admin {
 			self::GROUP,
 			Site_Answers_Plugin::KEY,
 			array(
-				'type'              => 'string',
+				'type'              => 'array',
 				'sanitize_callback' => array( __CLASS__, 'sanitize_key' ),
-				'default'           => '',
+				'default'           => array(),
 				'show_in_rest'      => false,
 			)
 		);
@@ -151,6 +151,7 @@ class Site_Answers_Admin {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
+		Site_Answers_Index::catch_up(); // Edits waiting for a WP-Cron run that did not come.
 		$status = Site_Answers_Index::status();
 		$s      = Site_Answers_Plugin::settings();
 		?>
@@ -213,7 +214,7 @@ class Site_Answers_Admin {
 		if ( 'done' === $done ) {
 			$message = sprintf(
 				/* translators: 1: number of pages/posts/products, 2: number of passages. */
-				__( 'Index rebuilt: %1$s items in %2$s passages.', 'site-answers' ),
+				_n( 'Index rebuilt: %1$s item in %2$s passages.', 'Index rebuilt: %1$s items in %2$s passages.', $status['posts'], 'site-answers' ),
 				number_format_i18n( $status['posts'] ),
 				number_format_i18n( $status['passages'] )
 			);
@@ -234,25 +235,37 @@ class Site_Answers_Admin {
 		foreach ( $status['types'] as $type => $n ) {
 			$object  = get_post_type_object( $type );
 			$label   = $object ? ( 1 === (int) $n ? $object->labels->singular_name : $object->labels->name ) : $type;
-			$types[] = number_format_i18n( $n ) . ' ' . strtolower( $label );
+			$types[] = sprintf(
+				/* translators: 1: a number, 2: post type name, for example "8" and "Pages". */
+				__( '%1$s %2$s', 'site-answers' ),
+				number_format_i18n( $n ),
+				$label
+			);
 		}
 		$rows = array(
 			__( 'Indexed', 'site-answers' )      => $status['posts']
-				/* translators: 1: number of items, 2: breakdown such as "8 pages, 2 posts". */
-				? sprintf( __( '%1$s items (%2$s)', 'site-answers' ), number_format_i18n( $status['posts'] ), implode( ', ', $types ) )
+				? sprintf(
+					/* translators: 1: number of items, 2: breakdown such as "8 Pages, 2 Posts". */
+					_n( '%1$s item (%2$s)', '%1$s items (%2$s)', $status['posts'], 'site-answers' ),
+					number_format_i18n( $status['posts'] ),
+					implode( ', ', $types )
+				)
 				: __( 'Nothing yet', 'site-answers' ),
 			__( 'Passages', 'site-answers' )     => number_format_i18n( $status['passages'] ),
 			__( 'Last rebuild', 'site-answers' ) => self::ago( $status['built'] ),
 			__( 'Last update', 'site-answers' )  => self::ago( $status['updated'] ),
 		);
 		if ( null !== $status['building'] ) {
-			/* translators: %s: number of items indexed so far. */
-			$rows[ __( 'Rebuild running', 'site-answers' ) ] = sprintf( __( '%s items so far, continuing in the background', 'site-answers' ), number_format_i18n( $status['building'] ) );
+			$rows[ __( 'Rebuild running', 'site-answers' ) ] = sprintf(
+				/* translators: %s: number of items indexed so far. */
+				_n( '%s item so far, continuing in the background', '%s items so far, continuing in the background', $status['building'], 'site-answers' ),
+				number_format_i18n( $status['building'] )
+			);
 		}
 		if ( $status['queued'] ) {
 			$rows[ __( 'Waiting edits', 'site-answers' ) ] = number_format_i18n( $status['queued'] );
 		}
-		if ( defined( 'SITE_ANSWERS_API_KEY' ) && '' !== Site_Answers_Plugin::api_key() ) {
+		if ( Site_Answers_Plugin::key_from_config() ) {
 			$key = __( 'Set in wp-config.php', 'site-answers' );
 		} else {
 			$key = '' !== Site_Answers_Plugin::api_key() ? __( 'Saved', 'site-answers' ) : __( 'Not saved: visitors get passages, not AI answers', 'site-answers' );
@@ -290,7 +303,7 @@ class Site_Answers_Admin {
 	 * AI section intro.
 	 */
 	public static function section_ai() {
-		echo '<p>' . esc_html__( 'Any OpenAI-compatible service works (OpenRouter by default). The key stays on your server: it is never shown again, never sent to the browser.', 'site-answers' ) . '</p>';
+		echo '<p>' . esc_html__( 'Tested with OpenRouter (the default). Other services with an OpenAI-compatible /chat/completions endpoint should work with a model that accepts max_tokens and temperature. The key stays on your server: it is never shown again and never sent to visitors\' browsers.', 'site-answers' ) . '</p>';
 	}
 
 	/**
@@ -391,13 +404,41 @@ class Site_Answers_Admin {
 	 * Field: AI base URL.
 	 */
 	public static function field_base_url() {
+		if ( Site_Answers_Plugin::key_from_config() ) {
+			// The wp-config.php key only goes to the address set next to it, or to the default.
+			printf(
+				'<input type="url" id="sa-base_url" class="regular-text code" value="%1$s" disabled><p class="description">%2$s</p>',
+				esc_attr( Site_Answers_Plugin::base_url() ),
+				esc_html__( 'Set in wp-config.php: the key there is only sent to SITE_ANSWERS_BASE_URL, or to OpenRouter when it is not defined.', 'site-answers' )
+			);
+			return;
+		}
 		$s = Site_Answers_Plugin::settings();
 		printf(
 			'<input type="url" id="sa-base_url" class="regular-text code" name="%1$s" value="%2$s" pattern="https://.*"><p class="description">%3$s</p>',
 			esc_attr( self::name( 'base_url' ) ),
 			esc_attr( $s['base_url'] ),
-			esc_html__( 'HTTPS only. The plugin calls {base URL}/chat/completions.', 'site-answers' )
+			esc_html__( 'HTTPS only, on a public address (ports 443, 80 or 8080). The plugin calls {base URL}/chat/completions.', 'site-answers' )
 		);
+	}
+
+	/**
+	 * Are the AI settings locked for this user? On a network whose key is set in wp-config.php, only network
+	 * administrators choose the model and the limits paid with that key.
+	 *
+	 * @return bool
+	 */
+	private static function network_locked() {
+		return is_multisite() && Site_Answers_Plugin::key_from_config() && ! current_user_can( 'manage_network_options' );
+	}
+
+	/**
+	 * Note under a field that only network administrators can change.
+	 *
+	 * @return string HTML.
+	 */
+	private static function locked_note() {
+		return '<p class="description">' . esc_html__( 'Set by the network administrator, because this network uses a shared AI key.', 'site-answers' ) . '</p>';
 	}
 
 	/**
@@ -429,12 +470,16 @@ class Site_Answers_Admin {
 	public static function field_model() {
 		$s = Site_Answers_Plugin::settings();
 		printf(
-			'<input type="text" id="sa-model" class="regular-text code" maxlength="100" name="%1$s" value="%2$s"><p class="description">%3$s</p>',
+			'<input type="text" id="sa-model" class="regular-text code" maxlength="100" name="%1$s" value="%2$s"%3$s><p class="description">%4$s</p>',
 			esc_attr( self::name( 'model' ) ),
 			esc_attr( $s['model'] ),
+			self::network_locked() ? ' disabled' : '',
 			/* translators: %s: default model name. */
 			esc_html( sprintf( __( 'Model name as your AI service writes it. Default: %s', 'site-answers' ), Site_Answers_Plugin::DEFAULT_MODEL ) )
 		);
+		if ( self::network_locked() ) {
+			echo self::locked_note(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in locked_note().
+		}
 	}
 
 	/**
@@ -443,9 +488,10 @@ class Site_Answers_Admin {
 	public static function field_ip_per_hour() {
 		$s = Site_Answers_Plugin::settings();
 		printf(
-			'<input type="number" id="sa-ip_per_hour" class="small-text" min="1" max="1000" name="%1$s" value="%2$d"> %3$s',
+			'<input type="number" id="sa-ip_per_hour" class="small-text" min="1" max="1000" name="%1$s" value="%2$d"%3$s> %4$s',
 			esc_attr( self::name( 'ip_per_hour' ) ),
 			(int) $s['ip_per_hour'],
+			self::network_locked() ? ' disabled' : '',
 			esc_html__( 'per hour from one IP address', 'site-answers' )
 		);
 	}
@@ -456,11 +502,15 @@ class Site_Answers_Admin {
 	public static function field_daily_cap() {
 		$s = Site_Answers_Plugin::settings();
 		printf(
-			'<input type="number" id="sa-daily_cap" class="small-text" min="0" max="100000" name="%1$s" value="%2$d"> %3$s',
+			'<input type="number" id="sa-daily_cap" class="small-text" min="0" max="100000" name="%1$s" value="%2$d"%3$s> %4$s',
 			esc_attr( self::name( 'daily_cap' ) ),
 			(int) $s['daily_cap'],
+			self::network_locked() ? ' disabled' : '',
 			esc_html__( 'for the whole site', 'site-answers' )
 		);
+		if ( self::network_locked() ) {
+			echo self::locked_note(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in locked_note().
+		}
 	}
 
 	/**
@@ -478,7 +528,7 @@ class Site_Answers_Admin {
 				esc_html( $label )
 			);
 		}
-		echo '<p class="description">' . esc_html__( 'Only published content. Password-protected, private and noindex pages (Yoast SEO, Rank Math) are skipped, and so are hidden products.', 'site-answers' ) . '</p></fieldset>';
+		echo '<p class="description">' . esc_html__( 'Only published content, as a logged-out visitor sees it. Password-protected, private and noindex pages (Yoast SEO, Rank Math), hidden products and pages locked by a membership plugin are skipped.', 'site-answers' ) . '</p></fieldset>';
 	}
 
 	/**
@@ -559,33 +609,41 @@ class Site_Answers_Admin {
 		$kept              = array_diff( (array) $old['post_types'], $public ); // Types of inactive plugins (e.g. WooCommerce off) stay chosen.
 		$out['post_types'] = array_values( array_unique( array_merge( array_intersect( $types, $public ), $kept ) ) );
 
+		if ( self::network_locked() ) {
+			foreach ( array( 'base_url', 'model', 'ip_per_hour', 'daily_cap' ) as $k ) {
+				$out[ $k ] = $old[ $k ]; // Only network administrators decide how the network's key is used.
+			}
+		}
 		return $out;
 	}
 
 	/**
-	 * Sanitize the API key: an empty field keeps the saved key; the "Remove" box clears it.
+	 * Sanitize the API key: an empty field keeps the saved key; the "Remove" box clears it. Stored as
+	 * array( 'k' => key ), so the wp-admin/options.php screen shows "SERIALIZED DATA", not the key.
 	 *
 	 * @param mixed $value Submitted key.
-	 * @return string
+	 * @return array
 	 */
 	public static function sanitize_key( $value ) {
-		$old = get_option( Site_Answers_Plugin::KEY, '' );
-		$old = is_string( $old ) ? $old : '';
+		$old = Site_Answers_Plugin::stored_key();
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- options.php checked the settings nonce before sanitizing.
 		$from_form = isset( $_POST['option_page'] ) && self::GROUP === $_POST['option_page'];
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Same request as above.
 		if ( $from_form && ! empty( $_POST['site_answers_api_key_remove'] ) ) {
-			return '';
+			return array();
+		}
+		if ( is_array( $value ) ) {
+			$value = isset( $value['k'] ) ? $value['k'] : '';
 		}
 		$value = preg_replace( '/\s+/', '', is_string( $value ) ? $value : '' );
 		if ( '' === $value ) {
-			return $from_form ? $old : '';
+			return $from_form ? $old : array();
 		}
 		if ( strlen( $value ) > 400 || ! preg_match( '/^[\x21-\x7E]+$/', $value ) ) {
 			add_settings_error( Site_Answers_Plugin::OPTION, 'sa_api_key', __( 'That API key has characters a key cannot have. The saved key was kept.', 'site-answers' ) );
 			return $old;
 		}
-		return $value;
+		return array( 'k' => $value );
 	}
 
 	/**

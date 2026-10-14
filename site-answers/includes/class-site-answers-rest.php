@@ -45,6 +45,7 @@ class Site_Answers_Rest {
 
 		// Public on purpose: visitors ask questions without an account. Abuse is bounded by the per-IP rate
 		// limit and the site-wide daily cap (Settings > Site Answers); answers only use published content.
+		// A browser request from another website's page is refused (see foreign_origin()).
 		register_rest_route(
 			self::NS,
 			'/ask',
@@ -104,6 +105,10 @@ class Site_Answers_Rest {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function ask( $request ) {
+		$refused = self::foreign_origin( $request );
+		if ( $refused ) {
+			return $refused;
+		}
 		$question = (string) $request->get_param( 'question' );
 		if ( '' === $question ) {
 			return self::empty_question();
@@ -112,6 +117,7 @@ class Site_Answers_Rest {
 		if ( is_wp_error( $allowed ) ) {
 			return $allowed;
 		}
+		Site_Answers_Index::catch_up();
 		return self::no_store( Site_Answers_Answer::answer( $question, (array) $request->get_param( 'history' ) ) );
 	}
 
@@ -125,6 +131,10 @@ class Site_Answers_Rest {
 		if ( empty( Site_Answers_Plugin::settings()['demo_mode'] ) ) {
 			return new WP_Error( 'site_answers_demo_off', __( 'Demo mode is off on this site.', 'site-answers' ), array( 'status' => 404 ) );
 		}
+		$refused = self::foreign_origin( $request );
+		if ( $refused ) {
+			return $refused;
+		}
 		$question = (string) $request->get_param( 'question' );
 		if ( '' === $question ) {
 			return self::empty_question();
@@ -133,6 +143,7 @@ class Site_Answers_Rest {
 		if ( is_wp_error( $allowed ) ) {
 			return $allowed;
 		}
+		Site_Answers_Index::catch_up();
 		$out = Site_Answers_Answer::passages( $question, (array) $request->get_param( 'history' ), (string) $request->get_param( 'query' ) );
 		if ( $out['found'] && ! Site_Answers_Limits::take_daily() ) {
 			return new WP_Error( 'site_answers_daily_cap', __( 'This site has used all of today\'s AI answers. Please come back tomorrow.', 'site-answers' ), array( 'status' => 429 ) );
@@ -151,6 +162,7 @@ class Site_Answers_Rest {
 		if ( '' === $question ) {
 			return self::empty_question();
 		}
+		Site_Answers_Index::catch_up();
 		return self::no_store(
 			Site_Answers_Answer::answer(
 				$question,
@@ -161,6 +173,62 @@ class Site_Answers_Rest {
 				)
 			)
 		);
+	}
+
+	/**
+	 * A browser request sent from another website's page: refused, so other sites cannot spend this site's AI
+	 * answers from their visitors' browsers. Requests without an Origin header (curl, servers) are not browser
+	 * requests from a page and keep working, within the same limits.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_Error|null
+	 */
+	private static function foreign_origin( $request ) {
+		$origin = trim( (string) $request->get_header( 'origin' ) );
+		if ( '' === $origin || self::own_origin( $origin ) ) {
+			return null;
+		}
+		return new WP_Error( 'site_answers_origin', __( 'Not available from another site.', 'site-answers' ), array( 'status' => 403 ) );
+	}
+
+	/**
+	 * Is this Origin header this site? Host and port of the home and site addresses (the scheme is not compared:
+	 * a site whose address still says http:// may be served over https), plus the site_answers_allowed_origins
+	 * filter for other domains of the same site.
+	 *
+	 * @param string $origin Origin header, such as "https://example.com".
+	 * @return bool
+	 */
+	public static function own_origin( $origin ) {
+		$own = array();
+		foreach ( array( home_url(), site_url() ) as $url ) {
+			$own[] = self::host_port( $url );
+		}
+		/**
+		 * Filters the extra origins whose pages may call the chat (other domains of the same site), as full origins
+		 * such as "https://shop.example.com".
+		 *
+		 * @param string[] $origins Origins.
+		 */
+		foreach ( (array) apply_filters( 'site_answers_allowed_origins', array() ) as $extra ) {
+			$own[] = self::host_port( (string) $extra );
+		}
+		$asked = self::host_port( $origin );
+		return '' !== $asked && in_array( $asked, $own, true );
+	}
+
+	/**
+	 * "host" or "host:port" of a URL or origin, lower case; "" when it has no host.
+	 *
+	 * @param string $url URL.
+	 * @return string
+	 */
+	private static function host_port( $url ) {
+		$parts = wp_parse_url( trim( $url ) );
+		if ( empty( $parts['host'] ) ) {
+			return '';
+		}
+		return strtolower( $parts['host'] ) . ( isset( $parts['port'] ) ? ':' . (int) $parts['port'] : '' );
 	}
 
 	/**

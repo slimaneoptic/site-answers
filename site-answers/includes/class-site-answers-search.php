@@ -108,6 +108,16 @@ class Site_Answers_Search {
 				)
 			);
 		}
+		// A short follow-up whose words point at the site but not at a page on their own ("And to the UK?" after a
+		// shipping question): the previous question's words count too. Unrelated follow-ups ("Tell me a joke") do not.
+		if ( $cur && $prev && count( $cur ) <= 3 ) {
+			foreach ( $cur as $t ) {
+				if ( ! empty( $df[ $t ] ) || ! empty( $alts[ $t ] ) ) {
+					$cov_sets[] = array_values( array_unique( array_merge( $cur, $prev ) ) );
+					break;
+				}
+			}
+		}
 
 		$cands = array();
 		foreach ( $index['chunks'] as $i => $chunk ) {
@@ -171,9 +181,19 @@ class Site_Answers_Search {
 		$held     = array();
 		$per_page = array();
 		$seen     = array();
+		$live     = array();
 		foreach ( $cands as $c ) {
 			$chunk = $index['chunks'][ $c[0] ];
-			$key   = md5( Site_Answers_Text::normalize( $chunk['text'] ) );
+			$page  = $chunk['post'];
+			if ( ! isset( $live[ $page ] ) ) {
+				// Made private, unpublished, password protected or deleted since it was indexed: never quoted.
+				$post          = get_post( $page );
+				$live[ $page ] = $post && 'publish' === $post->post_status && '' === $post->post_password;
+			}
+			if ( ! $live[ $page ] ) {
+				continue;
+			}
+			$key = md5( Site_Answers_Text::normalize( $chunk['text'] ) );
 			if ( isset( $seen[ $key ] ) ) {
 				continue; // Same text on two pages.
 			}
@@ -187,7 +207,6 @@ class Site_Answers_Search {
 				'score'    => round( $c[1], 4 ),
 				'coverage' => round( $c[2], 4 ),
 			);
-			$page         = $chunk['post'];
 			if ( isset( $per_page[ $page ] ) && $per_page[ $page ] >= self::PER_PAGE ) {
 				$held[] = $hit;
 				continue;

@@ -46,11 +46,14 @@
 			var sources = r.passages.map(function (p) { return { n: p.n, title: p.title, url: p.url, passage: p.text }; });
 			return send(C.demoEndpoint, { question: q, passages: r.passages, history: hist, site_label: r.site_label, site_lang: r.site_lang }, true)
 				.then(function (a) {
-					if (a.not_found && C.contact) { a.contact = { title: C.contact.title, url: C.contact.url, label: T.contact }; }
+					if (a.not_found && C.contact) { a.contact = { title: C.contact.title, url: C.contact.url, label: r.contact_label || T.contact }; }
 					return a;
 				}, function (e) {
-					// No readable answer: the demo AI refused this site (it only serves the online demo) or is unreachable.
-					return { answer: e && e.status && e.status !== 403 ? e.message : T.demoOnly, sources: sources, mode: 'extractive' };
+					// No readable answer. A 403, or a refused cross-origin call (no status) on a site that is not the online
+					// demo: the demo AI only serves the online demo. In the online demo: it is down or busy right now.
+					var inDemo = (C.demoOrigins || []).indexOf(window.location.origin) !== -1;
+					var why = e && e.status === 403 ? T.demoOnly : (e && e.status ? e.message : (inDemo ? T.demoDown : T.demoOnly));
+					return { answer: why, sources: sources, mode: 'extractive' };
 				});
 		});
 	}
@@ -136,7 +139,8 @@
 				b.appendChild(src);
 			}
 			if (res.contact && res.contact.url) {
-				var c = el('p', 'sa-contact'), ca = el('a', '', (res.contact.label || T.contact) + ' →');
+				var rtl = window.getComputedStyle(b).direction === 'rtl'; // The arrow points the way the answer reads.
+				var c = el('p', 'sa-contact'), ca = el('a', '', (res.contact.label || T.contact) + (rtl ? ' ←' : ' →'));
 				ca.href = res.contact.url;
 				c.appendChild(ca);
 				b.appendChild(c);
@@ -147,7 +151,12 @@
 			q = String(q || '').trim();
 			if (!q || busy) { return; }
 			busy = true;
-			if (chips) { chips.parentNode.removeChild(chips); chips = null; }
+			if (chips) {
+				var chipFocus = chips.contains(document.activeElement);
+				chips.parentNode.removeChild(chips);
+				chips = null;
+				if (chipFocus) { input.focus(); } // The focused chip is gone: keep keyboard users in the chat.
+			}
 			var asked = bubble('sa-user', q);
 			input.value = '';
 			var wait = bubble('sa-bot sa-wait');

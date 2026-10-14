@@ -1,7 +1,7 @@
 <?php
 /**
- * The search index: published content split into passages, stored in options with autoload off
- * (works the same on MySQL and on SQLite), kept current by hooks, a queue and WP-Cron.
+ * The search index: published content, as a logged-out visitor sees it, split into passages and stored in
+ * options with autoload off (no custom tables), kept current by hooks, a queue and WP-Cron.
  *
  * Storage
  *   site_answers_index          meta: generation, shard counts, post => shard map, build times
@@ -30,11 +30,23 @@ class Site_Answers_Index {
 	const BUILD_STALE_SECONDS   = 600;
 
 	/**
+	 * Globals that setup_postdata() and the_post hooks change; saved and restored around rendering.
+	 */
+	const POST_GLOBALS = array( 'post', 'id', 'authordata', 'currentday', 'currentmonth', 'page', 'pages', 'multipage', 'more', 'numpages', 'product' );
+
+	/**
 	 * Passages loaded for this request.
 	 *
 	 * @var array|null
 	 */
 	private static $passages = null;
+
+	/**
+	 * Whether the options table stores only 3-byte UTF-8 (utf8mb3), checked once per request.
+	 *
+	 * @var bool|null
+	 */
+	private static $mb3 = null;
 
 	/**
 	 * Hooks that keep the index current.
@@ -74,7 +86,8 @@ class Site_Answers_Index {
 	}
 
 	/**
-	 * Published, public, not password protected, not set to noindex in Yoast or Rank Math, not a hidden product.
+	 * Published, public, not password protected, not set to noindex in Yoast or Rank Math, not a hidden product,
+	 * not a WooCommerce cart, checkout or account page, and not locked for logged-out visitors by a membership plugin.
 	 *
 	 * @param WP_Post $post Post.
 	 * @return bool
@@ -102,13 +115,125 @@ class Site_Answers_Index {
 				return false;
 			}
 		}
+		if ( 'page' === $post->post_type && function_exists( 'wc_get_page_id' ) ) {
+			// Transactional pages, not content (and their blocks need a shopper's session to render).
+			$shop_pages = array( wc_get_page_id( 'cart' ), wc_get_page_id( 'checkout' ), wc_get_page_id( 'myaccount' ) );
+			if ( in_array( (int) $post->ID, array_map( 'intval', $shop_pages ), true ) ) {
+				return false;
+			}
+		}
+		if ( self::as_visitor( $post, array( __CLASS__, 'is_locked' ), true ) ) {
+			return false;
+		}
 		/**
-		 * Filters whether a post is indexed.
+		 * Filters whether a post is indexed. Return false for content your site shows only to some visitors
+		 * (members, customers, students) when its plugin is not one Site Answers checks by itself.
 		 *
 		 * @param bool    $index Index it.
 		 * @param WP_Post $post  Post.
 		 */
 		return (bool) apply_filters( 'site_answers_index_post', true, $post );
+	}
+
+	/**
+	 * Is the whole post locked for a logged-out visitor by a membership plugin? Runs as user 0 (see as_visitor()).
+	 * Paid Memberships Pro, MemberPress, Restrict Content (Pro), WooCommerce Memberships and Members.
+	 *
+	 * @param WP_Post $post Post.
+	 * @return bool
+	 */
+	public static function is_locked( $post ) {
+		if ( function_exists( 'pmpro_has_membership_access' ) && ! pmpro_has_membership_access( $post->ID ) ) {
+			return true;
+		}
+		if ( class_exists( 'MeprRule' ) && is_callable( array( 'MeprRule', 'is_locked' ) ) && MeprRule::is_locked( $post ) ) {
+			return true;
+		}
+		if ( function_exists( 'rcp_is_restricted_content' ) && rcp_is_restricted_content( $post->ID ) ) {
+			return true;
+		}
+		if ( function_exists( 'wc_memberships_is_post_content_restricted' ) && wc_memberships_is_post_content_restricted( $post->ID ) ) {
+			return true;
+		}
+		if ( function_exists( 'members_can_user_view_post' ) && ! members_can_user_view_post( 0, $post->ID ) ) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Run $callback( $post ) as a logged-out visitor viewing $post: current user 0 and the post globals set, echoed
+	 * output dropped, everything restored afterwards (also the script and style queues, so rendering content inside
+	 * an admin page never adds front-end assets to it).
+	 *
+	 * @param WP_Post  $post     Post.
+	 * @param callable $callback Callback.
+	 * @param mixed    $fallback Returned when the callback throws (a plugin that fails outside the front end).
+	 * @return mixed
+	 */
+	private static function as_visitor( $post, $callback, $fallback ) {
+		global $wp_scripts, $wp_styles;
+		$user  = get_current_user_id();
+		$saved = array();
+		foreach ( self::POST_GLOBALS as $name ) {
+			$saved[ $name ] = array_key_exists( $name, $GLOBALS ) ? array( $GLOBALS[ $name ] ) : null;
+		}
+		$scripts = $wp_scripts instanceof WP_Scripts ? $wp_scripts->queue : null;
+		$styles  = $wp_styles instanceof WP_Styles ? $wp_styles->queue : null;
+
+		wp_set_current_user( 0 );
+		$GLOBALS['post'] = $post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Shortcodes read the current post; restored below.
+		setup_postdata( $post );
+		ob_start();
+		try {
+			$out = call_user_func( $callback, $post );
+		} catch ( Throwable $e ) {
+			$out = $fallback;
+		}
+		ob_end_clean();
+
+		wp_set_current_user( $user );
+		foreach ( $saved as $name => $value ) {
+			if ( null === $value ) {
+				unset( $GLOBALS[ $name ] );
+			} else {
+				$GLOBALS[ $name ] = $value[0]; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Restores WordPress's own globals saved above.
+			}
+		}
+		if ( null !== $scripts && $wp_scripts instanceof WP_Scripts ) {
+			$wp_scripts->queue = $scripts;
+		}
+		if ( null !== $styles && $wp_styles instanceof WP_Styles ) {
+			$wp_styles->queue = $styles;
+		}
+		return $out;
+	}
+
+	/**
+	 * HTML as a logged-out visitor sees it: blocks and shortcodes rendered as user 0, so restricted blocks and
+	 * shortcodes ("[members_only]...[/members_only]") give their public version, not the hidden text.
+	 *
+	 * @param string  $html Post content or a product description.
+	 * @param WP_Post $post Post it belongs to.
+	 * @return string|null Null when rendering failed (the post is then left out).
+	 */
+	private static function visible_html( $html, $post ) {
+		$html = (string) $html;
+		if ( '' === trim( $html ) ) {
+			return '';
+		}
+		return self::as_visitor(
+			$post,
+			static function () use ( $html ) {
+				add_shortcode( 'site_answers', '__return_empty_string' ); // The chat box itself is not content.
+				try {
+					return (string) do_shortcode( do_blocks( $html ) );
+				} finally {
+					add_shortcode( 'site_answers', array( 'Site_Answers_Frontend', 'shortcode' ) );
+				}
+			},
+			null
+		);
 	}
 
 	/**
@@ -122,16 +247,23 @@ class Site_Answers_Index {
 		if ( ! $post || ! self::is_indexable( $post ) ) {
 			return null;
 		}
-		$title = trim( html_entity_decode( wp_strip_all_tags( get_the_title( $post ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		$title = Site_Answers_Text::plain( get_the_title( $post ) );
 		if ( 'product' === $post->post_type && function_exists( 'wc_get_product' ) ) {
 			$text = self::product_text( $post );
 		} else {
+			$html = self::visible_html( $post->post_content, $post );
+			if ( null === $html ) {
+				return null; // Could not be rendered as a visitor sees it: better left out than leaking hidden text.
+			}
 			$parts = array();
 			if ( has_excerpt( $post ) ) {
 				$parts[] = Site_Answers_Text::html_to_text( $post->post_excerpt );
 			}
-			$parts[] = Site_Answers_Text::html_to_text( $post->post_content );
+			$parts[] = Site_Answers_Text::html_to_text( $html );
 			$text    = trim( implode( "\n", array_filter( $parts ) ) );
+		}
+		if ( null === $text ) {
+			return null;
 		}
 		/**
 		 * Filters the plain text indexed for a post (add custom fields, remove boilerplate...).
@@ -140,8 +272,13 @@ class Site_Answers_Index {
 		 * @param WP_Post $post Post.
 		 */
 		$text = trim( (string) apply_filters( 'site_answers_document_text', $text, $post ) );
+		if ( self::utf8mb3() ) {
+			// utf8mb3 columns cannot store 4-byte characters (emoji): drop them, or the whole shard fails to save.
+			$title = (string) preg_replace( '/[\x{10000}-\x{10FFFF}]/u', '', $title );
+			$text  = trim( (string) preg_replace( '/[\x{10000}-\x{10FFFF}]/u', '', $text ) );
+		}
 		if ( '' === $text ) {
-			return null; // Cart, checkout and other pages made only of blocks or shortcodes.
+			return null; // Pages made only of blocks or shortcodes without text, such as an empty blog page.
 		}
 		$url    = get_permalink( $post );
 		$chunks = array();
@@ -166,7 +303,7 @@ class Site_Answers_Index {
 	 * A WooCommerce product as text: price, SKU, stock, categories, attributes, size, then descriptions.
 	 *
 	 * @param WP_Post $post Product post.
-	 * @return string
+	 * @return string|null Null when a description could not be rendered as a visitor sees it.
 	 */
 	private static function product_text( $post ) {
 		$product = wc_get_product( $post );
@@ -216,8 +353,13 @@ class Site_Answers_Index {
 			/* translators: 1: weight number, 2: weight unit. */
 			$lines[] = sprintf( __( 'Weight: %1$s %2$s', 'site-answers' ), wc_format_localized_decimal( $product->get_weight() ), get_option( 'woocommerce_weight_unit' ) );
 		}
-		$lines[] = Site_Answers_Text::html_to_text( $product->get_short_description() );
-		$lines[] = Site_Answers_Text::html_to_text( $product->get_description() );
+		foreach ( array( $product->get_short_description(), $product->get_description() ) as $description ) {
+			$html = self::visible_html( $description, $post );
+			if ( null === $html ) {
+				return null;
+			}
+			$lines[] = Site_Answers_Text::html_to_text( $html );
+		}
 		return trim( implode( "\n", array_filter( $lines ) ) );
 	}
 
@@ -267,6 +409,21 @@ class Site_Answers_Index {
 	private static function plain( $html ) {
 		$text = html_entity_decode( wp_strip_all_tags( (string) $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		return trim( preg_replace( '/[\s\x{00A0}]+/u', ' ', $text ) );
+	}
+
+	/**
+	 * Does the options table store only 3-byte UTF-8 (MySQL utf8mb3)? get_col_charset() caches the table charset,
+	 * so this is one query per request.
+	 *
+	 * @return bool
+	 */
+	private static function utf8mb3() {
+		global $wpdb;
+		if ( null === self::$mb3 ) {
+			$charset   = $wpdb->get_col_charset( $wpdb->options, 'option_value' );
+			self::$mb3 = in_array( $charset, array( 'utf8', 'utf8mb3' ), true );
+		}
+		return self::$mb3;
 	}
 
 	// ------------------------------------------------------------------ Storage helpers.
@@ -423,12 +580,39 @@ class Site_Answers_Index {
 	}
 
 	/**
-	 * Index the next posts of the rebuild in progress.
+	 * Index the next posts of the rebuild in progress, in the site language (product labels such as "Price" are
+	 * stored in the index, whoever triggers the build).
 	 *
 	 * @param float $budget Seconds to spend in this request.
 	 * @return string "done" | "partial" | "idle"
 	 */
 	public static function continue_build( $budget = 20.0 ) {
+		$switched = self::switch_to_site_locale();
+		try {
+			return self::continue_build_in_site_locale( $budget );
+		} finally {
+			if ( $switched ) {
+				restore_previous_locale();
+			}
+		}
+	}
+
+	/**
+	 * Switch to the site language when this request runs in another one (an admin's own language).
+	 *
+	 * @return bool Whether it switched (then restore_previous_locale() must follow).
+	 */
+	private static function switch_to_site_locale() {
+		return function_exists( 'switch_to_locale' ) && switch_to_locale( get_locale() );
+	}
+
+	/**
+	 * The work of continue_build().
+	 *
+	 * @param float $budget Seconds to spend in this request.
+	 * @return string "done" | "partial" | "idle"
+	 */
+	private static function continue_build_in_site_locale( $budget ) {
 		global $wpdb;
 		$state = get_option( self::BUILD );
 		if ( ! is_array( $state ) || empty( $state['gen'] ) ) {
@@ -456,6 +640,9 @@ class Site_Answers_Index {
 					self::build_add( $state, $cur, (int) $id, $doc );
 				}
 				if ( microtime( true ) - $start > $budget ) {
+					if ( ! self::is_current_build( $state['gen'] ) ) {
+						return self::abandon( $state );
+					}
 					self::write_shard( $state['gen'], $state['cur'], $cur );
 					$state['touched'] = time();
 					self::save_build( $state );
@@ -465,14 +652,44 @@ class Site_Answers_Index {
 					return 'partial';
 				}
 			}
+			if ( ! self::is_current_build( $state['gen'] ) ) {
+				return self::abandon( $state );
+			}
 			self::write_shard( $state['gen'], $state['cur'], $cur );
 			$state['touched'] = time();
 			self::save_build( $state );
 		}
 
+		if ( ! self::is_current_build( $state['gen'] ) ) {
+			return self::abandon( $state );
+		}
 		self::write_shard( $state['gen'], $state['cur'], $cur );
 		self::finish_build( $state );
 		return 'done';
+	}
+
+	/**
+	 * Is this generation still the rebuild in progress? Another request may have started a newer rebuild (the
+	 * Rebuild button pressed again, the daily rebuild, a settings change) or finished one meanwhile.
+	 *
+	 * @param int $gen Generation of the caller's build.
+	 * @return bool
+	 */
+	private static function is_current_build( $gen ) {
+		wp_cache_delete( self::BUILD, 'options' ); // Read what other requests saved, not this request's copy.
+		$stored = get_option( self::BUILD );
+		return is_array( $stored ) && (int) $stored['gen'] === (int) $gen;
+	}
+
+	/**
+	 * Stop a rebuild that a newer one replaced: drop its shards and leave the index and build state alone.
+	 *
+	 * @param array $state Build state.
+	 * @return string "idle"
+	 */
+	private static function abandon( $state ) {
+		self::drop_shards( $state['gen'], count( $state['shards'] ) );
+		return 'idle';
 	}
 
 	/**
@@ -517,7 +734,12 @@ class Site_Answers_Index {
 	 * @param array $state Build state.
 	 */
 	private static function finish_build( $state ) {
-		$old    = self::meta();
+		wp_cache_delete( self::META, 'options' );
+		$old = self::meta();
+		if ( (int) $old['gen'] > (int) $state['gen'] ) {
+			self::drop_shards( $state['gen'], count( $state['shards'] ) ); // A newer rebuild finished first: keep it.
+			return;
+		}
 		$stored = get_option( self::BUILD );
 		$replay = is_array( $stored ) && ! empty( $stored['replay'] ) ? $stored['replay'] : array();
 
@@ -567,18 +789,24 @@ class Site_Answers_Index {
 			return;
 		}
 		$indexed = isset( self::meta()['map'][ (int) $post_id ] );
+		if ( $indexed && ! self::is_indexable( $post ) ) {
+			// Made private, a draft or password protected: out of the answers now, not at the next cron run. The
+			// queue below still replays it if a rebuild is running.
+			self::update_post( $post_id );
+		}
 		if ( $indexed || ( 'publish' === $post->post_status && in_array( $post->post_type, self::post_types(), true ) ) ) {
 			self::queue( $post_id );
 		}
 	}
 
 	/**
-	 * A post was trashed or deleted: queue it if it is indexed.
+	 * A post was trashed or deleted: out of the answers now (one shard write), and queued for a running rebuild.
 	 *
 	 * @param int $post_id Post ID.
 	 */
 	public static function on_remove( $post_id ) {
 		if ( isset( self::meta()['map'][ (int) $post_id ] ) ) {
+			self::update_post( $post_id );
 			self::queue( $post_id );
 		}
 	}
@@ -623,6 +851,29 @@ class Site_Answers_Index {
 	}
 
 	/**
+	 * Do now what WP-Cron should have done, when its event is overdue (WP-Cron off without a server cron, a broken
+	 * loopback, WordPress Playground): index queued edits, and build the first index of a site that has none
+	 * (network activation, a site created later). Called before each answer and on the settings page; where WP-Cron
+	 * runs, it has usually run already and this costs two lookups in the cron array.
+	 */
+	public static function catch_up() {
+		if ( wp_doing_cron() || wp_installing() ) {
+			return;
+		}
+		$next = wp_next_scheduled( Site_Answers_Plugin::CRON_QUEUE );
+		if ( $next && $next <= time() ) {
+			wp_unschedule_event( $next, Site_Answers_Plugin::CRON_QUEUE );
+			self::process_queue();
+		}
+		$daily = wp_next_scheduled( Site_Answers_Plugin::CRON_DAILY );
+		if ( $daily && $daily <= time() && ! self::meta()['gen'] && ! self::building() ) {
+			wp_unschedule_event( $daily, Site_Answers_Plugin::CRON_DAILY );
+			wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', Site_Answers_Plugin::CRON_DAILY );
+			self::rebuild( 5.0 ); // A small site is ready at once; a big one continues in WP-Cron.
+		}
+	}
+
+	/**
 	 * Cron: re-index the queued posts (200 per run).
 	 */
 	public static function process_queue() {
@@ -652,11 +903,27 @@ class Site_Answers_Index {
 	}
 
 	/**
-	 * Re-index one post now: remove its passages, add the new ones if it is still indexable.
+	 * Re-index one post now: remove its passages, add the new ones if it is still indexable (in the site language).
 	 *
 	 * @param int $post_id Post ID.
 	 */
 	public static function update_post( $post_id ) {
+		$switched = self::switch_to_site_locale();
+		try {
+			self::update_post_in_site_locale( $post_id );
+		} finally {
+			if ( $switched ) {
+				restore_previous_locale();
+			}
+		}
+	}
+
+	/**
+	 * The work of update_post().
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private static function update_post_in_site_locale( $post_id ) {
 		$meta = self::meta();
 		if ( ! $meta['gen'] ) {
 			return;

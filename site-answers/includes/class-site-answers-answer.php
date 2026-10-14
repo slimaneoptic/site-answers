@@ -20,18 +20,30 @@ class Site_Answers_Answer {
 		'en' => array(
 			'not_found' => "I couldn't find that on this site.",
 			'contact'   => 'Contact us',
+			'no_key'    => 'AI answers are not set up on this site yet, so here are the most relevant passages from its pages.',
+			'daily_cap' => "This site has used all of today's AI answers, so here are the most relevant passages from its pages.",
+			'ai_error'  => 'The AI did not answer just now, so here are the most relevant passages from this site.',
 		),
 		'fr' => array(
 			'not_found' => "Je n'ai pas trouvé cette information sur ce site.",
 			'contact'   => 'Nous contacter',
+			'no_key'    => 'Les réponses par IA ne sont pas encore activées sur ce site. Voici les passages de ses pages qui répondent le mieux à votre question.',
+			'daily_cap' => "Ce site a utilisé toutes ses réponses par IA pour aujourd'hui. Voici les passages de ses pages qui répondent le mieux à votre question.",
+			'ai_error'  => "L'IA n'a pas répondu pour le moment. Voici les passages de ce site qui répondent le mieux à votre question.",
 		),
 		'ar' => array(
 			'not_found' => 'لم أجد هذه المعلومة في هذا الموقع.',
 			'contact'   => 'تواصل معنا',
+			'no_key'    => 'الإجابات بالذكاء الاصطناعي غير مفعّلة على هذا الموقع بعد، وإليك أقرب المقاطع من صفحاته إلى سؤالك.',
+			'daily_cap' => 'استنفد هذا الموقع إجابات الذكاء الاصطناعي لهذا اليوم، وإليك أقرب المقاطع من صفحاته إلى سؤالك.',
+			'ai_error'  => 'لم يستجب الذكاء الاصطناعي الآن، وإليك أقرب المقاطع من هذا الموقع إلى سؤالك.',
 		),
 		'es' => array(
 			'not_found' => 'No encontré esa información en este sitio.',
 			'contact'   => 'Contáctanos',
+			'no_key'    => 'Las respuestas con IA aún no están activadas en este sitio. Estos son los pasajes de sus páginas que mejor responden a tu pregunta.',
+			'daily_cap' => 'Este sitio ya usó todas sus respuestas con IA de hoy. Estos son los pasajes de sus páginas que mejor responden a tu pregunta.',
+			'ai_error'  => 'La IA no respondió en este momento. Estos son los pasajes de este sitio que mejor responden a tu pregunta.',
 		),
 	);
 
@@ -90,17 +102,18 @@ class Site_Answers_Answer {
 			}
 		}
 
+		$lang = Site_Answers_Text::question_lang( $question );
 		if ( ! $hits ) {
 			$out = self::not_found( $question, $contact );
 		} elseif ( ! $has_key ) {
-			$out = self::extractive( $hits, 'no_key' );
+			$out = self::extractive( $hits, 'no_key', $lang );
 		} elseif ( ! $used_ai && $opts['count'] && ! Site_Answers_Limits::take_daily() ) {
-			$out = self::extractive( $hits, 'daily_cap' );
+			$out = self::extractive( $hits, 'daily_cap', $lang );
 		} else {
 			$reply = Site_Answers_AI::chat( Site_Answers_AI::messages( $question, $hits, $history, $contact ), Site_Answers_AI::ANSWER_MAX_TOKENS );
 			if ( is_wp_error( $reply ) ) {
 				$debug['error'] = $reply->get_error_message();
-				$out            = self::extractive( $hits, 'ai_error' );
+				$out            = self::extractive( $hits, 'ai_error', $lang );
 			} else {
 				$out = self::from_reply( $reply, $hits, $question, $contact );
 			}
@@ -119,7 +132,8 @@ class Site_Answers_Answer {
 	 * @param string $question Question.
 	 * @param array  $history  Earlier turns.
 	 * @param string $query    Optional translated query (second try after a cross-language miss).
-	 * @return array { found, passages: [ { n, title, url, text } ], foreign, site_lang, site_label, answer?, contact?, hint? }
+	 * @return array { found, passages: [ { n, title, url, text } ], foreign, site_lang, site_label, contact_label,
+	 *                 answer?, contact?, hint? }
 	 */
 	public static function passages( $question, $history, $query = '' ) {
 		$site_lang = Site_Answers_Text::site_lang();
@@ -131,11 +145,12 @@ class Site_Answers_Answer {
 			)
 		);
 		$out       = array(
-			'found'      => (bool) $hits,
-			'passages'   => array(),
-			'foreign'    => Site_Answers_Text::is_foreign( $question, $site_lang ),
-			'site_lang'  => $site_lang,
-			'site_label' => wp_strip_all_tags( get_bloginfo( 'name' ) ),
+			'found'         => (bool) $hits,
+			'passages'      => array(),
+			'foreign'       => Site_Answers_Text::is_foreign( $question, $site_lang ),
+			'site_lang'     => $site_lang,
+			'site_label'    => Site_Answers_Text::plain( get_bloginfo( 'name' ) ),
+			'contact_label' => self::local( 'contact', Site_Answers_Text::question_lang( $question ) ), // For an AI "not found".
 		);
 		foreach ( self::sources( $hits ) as $source ) {
 			$out['passages'][] = array(
@@ -166,8 +181,11 @@ class Site_Answers_Answer {
 	private static function from_reply( $reply, $hits, $question, $contact ) {
 		$reply     = trim( preg_replace( '/^#{1,6}\s*/m', '', $reply ) );
 		$sources   = self::sources( $hits );
-		$cited     = Site_Answers_AI::citations( $reply, count( $sources ) );
 		$not_found = (bool) preg_match( self::NOT_FOUND_RE, mb_substr( $reply, 0, 400 ) );
+		if ( $not_found ) {
+			$reply = self::uncite_not_found( $reply );
+		}
+		$cited = Site_Answers_AI::citations( $reply, count( $sources ) );
 		if ( $cited ) {
 			$sources = array_values(
 				array_filter(
@@ -190,20 +208,38 @@ class Site_Answers_Answer {
 	}
 
 	/**
+	 * A "could not find" sentence cites nothing: drop the [n] marks of the sentences that say so, so the passage the
+	 * model named is not listed as a source ("I couldn't find that on this site [1]."). Other sentences of a
+	 * partial answer keep theirs.
+	 *
+	 * @param string $reply Model text.
+	 * @return string
+	 */
+	private static function uncite_not_found( $reply ) {
+		$out = preg_replace_callback(
+			'/[^.!?\x{061F}\n]+[.!?\x{061F}]*/u',
+			static function ( $m ) {
+				if ( ! preg_match( self::NOT_FOUND_RE, $m[0] ) ) {
+					return $m[0];
+				}
+				return preg_replace( '/\s*\[\d+(?:\s*,\s*\d+)*\]/', '', $m[0] );
+			},
+			$reply
+		);
+		return is_string( $out ) ? $out : $reply;
+	}
+
+	/**
 	 * Best passages with links, and a note saying why there is no AI answer.
 	 *
 	 * @param array  $hits   Passages.
 	 * @param string $reason no_key | daily_cap | ai_error.
+	 * @param string $lang   Question language.
 	 * @return array
 	 */
-	private static function extractive( $hits, $reason ) {
-		$notes = array(
-			'no_key'    => __( 'AI answers are not set up on this site yet, so here are the most relevant passages from its pages.', 'site-answers' ),
-			'daily_cap' => __( 'This site has used all of today\'s AI answers, so here are the most relevant passages from its pages.', 'site-answers' ),
-			'ai_error'  => __( 'The AI did not answer just now, so here are the most relevant passages from this site.', 'site-answers' ),
-		);
+	private static function extractive( $hits, $reason, $lang = '' ) {
 		return array(
-			'answer'  => $notes[ $reason ],
+			'answer'  => self::local( $reason, $lang ),
 			'sources' => self::sources( $hits ),
 			'mode'    => 'extractive',
 			'notice'  => $reason,
@@ -247,7 +283,7 @@ class Site_Answers_Answer {
 	 * A short text in the visitor's language: the translatable site text when the visitor writes in the site
 	 * language (or we cannot tell), a built-in text for English, French, Arabic or Spanish otherwise.
 	 *
-	 * @param string $key  not_found | contact.
+	 * @param string $key  not_found | contact | no_key | daily_cap | ai_error.
 	 * @param string $lang Question language.
 	 * @return string
 	 */
@@ -256,6 +292,9 @@ class Site_Answers_Answer {
 			$texts = array(
 				'not_found' => __( "I couldn't find that on this site.", 'site-answers' ),
 				'contact'   => __( 'Contact us', 'site-answers' ),
+				'no_key'    => __( 'AI answers are not set up on this site yet, so here are the most relevant passages from its pages.', 'site-answers' ),
+				'daily_cap' => __( 'This site has used all of today\'s AI answers, so here are the most relevant passages from its pages.', 'site-answers' ),
+				'ai_error'  => __( 'The AI did not answer just now, so here are the most relevant passages from this site.', 'site-answers' ),
 			);
 			return $texts[ $key ];
 		}

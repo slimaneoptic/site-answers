@@ -2,8 +2,13 @@
 
 Demo path: the widget gets passages from WordPress (/search) and answers from a local copy of the hosted engine
 (branch wp-demo, POST /api/answer). 6 English questions with known answers, 1 French, 1 Arabic, 2 off-topic,
-source links, keyboard and focus, phone width, console errors, the inline shortcode, the "demo AI only works in
-the online demo" message on a site the engine refuses, and the screenshots.
+source links, keyboard and focus (also after a starter question), phone width and input size, console errors, the
+inline shortcode, the "demo AI only works in the online demo" message on a site the engine refuses, the "demo AI
+did not answer" message in the online demo, the contact arrow in Arabic, and the screenshots.
+
+The engine can run with the real model or with tests/fake_engine.py (same engine code, a fake model in-process: no
+key, no cost; it answers with the passage line closest to the question). Real-model answers are checked apart, a
+few at a time (tests/real_key.py, tests/real_demo.py).
 
 Run: python -I tests/e2e_ui.py http://127.0.0.1:9400 http://127.0.0.1:8790/api/answer [http://127.0.0.1:8791/api/answer]
      (the third URL: an engine that refuses this site's origin)
@@ -148,6 +153,16 @@ with sync_playwright() as pw:
     check("Esc closes and returns focus to the launcher", page.locator(".sa-float .sa-box").is_hidden()
           and page.evaluate("document.activeElement.classList.contains('sa-launch')") and launch.get_attribute("aria-expanded") == "false")
     store_before = page.evaluate("[document.cookie, Object.keys(localStorage).sort().join(), Object.keys(sessionStorage).sort().join()]")
+    check("question field is 16 px (iPhone Safari does not zoom the page on tap)",
+          page.evaluate("getComputedStyle(document.querySelector('.sa-float .sa-input')).fontSize") == "16px")
+    page.keyboard.press("Enter")  # focus is back on the launcher: reopen with the keyboard
+    page.wait_for_selector(".sa-float .sa-box:not([hidden])")
+    page.keyboard.press("Shift+Tab")  # from the question field back to the last starter chip
+    on_chip = page.evaluate("document.activeElement.classList.contains('sa-chip')")
+    page.keyboard.press("Enter")
+    page.wait_for_function("!document.querySelector('.sa-float .sa-wait') && document.querySelectorAll('.sa-float .sa-bot').length >= 2", timeout=90_000)
+    check("starter chip chosen with the keyboard: focus stays in the question field", on_chip
+          and page.evaluate("document.activeElement.classList.contains('sa-input')"), page.evaluate("document.activeElement.tagName"))
 
     # ---------------------------------------------------------------- known answers (demo path, real AI through the local engine)
     for q, path, want in CASES:
@@ -229,6 +244,28 @@ with sync_playwright() as pw:
               and "Settings > Site Answers" in a["text"] and any(s["href"].endswith("/shipping/") for s in a["sources"]), a)
         del errors[n_err:]  # the browser logs the refused cross-origin call itself; expected here only
         demo_endpoint(ENGINE)
+
+    # ---------------------------------------------------------------- Arabic "not found": contact link reads right to left
+    page.goto(BASE + "/")
+    open_widget(page)
+    a = ask(page, "من فاز بكأس العالم 2022؟")
+    link = page.evaluate("(document.querySelector('.sa-float .sa-bot:last-of-type .sa-contact a') || {}).textContent || ''")
+    check("Arabic off-topic question: Arabic contact label, arrow pointing left", link.startswith("تواصل معنا") and link.endswith("←")
+          and a["dir"] == "rtl", (link, a["dir"]))
+
+    # ---------------------------------------------------------------- online demo, demo AI unreachable
+    rest("sa-test/v1/set", {"name": "sa_test_demo_origin", "value": BASE})  # this page counts as the online demo
+    demo_endpoint("http://127.0.0.1:9/api/answer")  # nothing listens there
+    page.goto(BASE + "/")
+    open_widget(page)
+    n_err = len(errors)
+    a = ask(page, "How much does standard shipping cost?")
+    check("online demo, demo AI unreachable: 'did not answer just now' + the passages (not the 'only in the demo' text)",
+          "did not answer just now" in a["text"] and "only works in the online demo" not in a["text"]
+          and any(s["href"].endswith("/shipping/") for s in a["sources"]), a)
+    del errors[n_err:]  # the browser logs the failed call itself; expected here only
+    rest("sa-test/v1/set", {"name": "sa_test_demo_origin", "value": None})
+    demo_endpoint(ENGINE)
 
     admin_shot(browser)
     check("0 console errors", not errors, errors)

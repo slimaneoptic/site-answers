@@ -36,7 +36,7 @@
 .sa-chip{margin:0;padding:6px 12px;border:1px solid var(--sa-brand);border-radius:16px;background:#fff;color:var(--sa-ink);font:inherit;font-size:13.5px;text-align:start;cursor:pointer}
 .sa-chip:hover{background:#f0f4f3}
 .sa-form{display:flex;gap:8px;margin:0;padding:10px 10px 6px;background:#fff;border-top:1px solid var(--sa-line)}
-.sa-input{flex:1;min-width:0;height:42px;margin:0;padding:0 14px;border:1px solid #c3c4c7;border-radius:21px;background:#fff;color:var(--sa-ink);font:inherit;font-size:15px}
+.sa-input{flex:1;min-width:0;height:42px;margin:0;padding:0 14px;border:1px solid #c3c4c7;border-radius:21px;background:#fff;color:var(--sa-ink);font:inherit;font-size:16px}
 .sa-send{flex:none;display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;margin:0;padding:0;border:0;border-radius:50%;background:var(--sa-brand);color:var(--sa-on-brand);cursor:pointer}
 [dir=rtl] .sa-send svg{transform:scaleX(-1)}
 .sa-foot{margin:0;padding:0 12px 8px;background:#fff;font-size:11.5px;text-align:center;color:#646970}

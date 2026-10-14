@@ -53,7 +53,7 @@ $pages = array();
 
 $pages['home'] = array(
 	'Everyday home goods, made to last',
-	sa_demo_p( '<strong>Atlas Home is a fictional demo store.</strong> It shows how the Site Answers plugin answers visitors from a site\'s own pages. Try the chat button in the corner: ask about shipping, returns, care or our products.' )
+	sa_demo_p( '<strong>Atlas Home is a fictional demo store.</strong> It shows how the Site Answers plugin answers visitors from a site\'s own pages. Try the chat button in the corner: ask about shipping, returns, warranty or care.' )
 	. sa_demo_columns(
 		array(
 			array( 'Free shipping over $75', 'Standard shipping in the US is free on orders over $75. ' . sa_demo_link( 'shipping', 'Shipping details' ) . '.' ),
@@ -324,7 +324,7 @@ update_option(
 		'base_url'     => 'https://openrouter.ai/api/v1',
 		'model'        => 'google/gemini-3.8-flash',
 		'color'        => '#9a4a2f',
-		'greeting'     => 'Hi! I am the Atlas Home assistant. Ask me about shipping, returns, care or our products. I answer from this site\'s pages and show my sources.',
+		'greeting'     => 'Hi! I am the Atlas Home assistant. Ask me about shipping, returns, warranty or care. I answer from this site\'s pages and show my sources.',
 		'starters'     => array( 'How much is shipping?', 'What is your return policy?', 'How do I clean a wool rug?' ),
 		'contact_page' => $ids['contact'],
 		'ip_per_hour'  => 30,

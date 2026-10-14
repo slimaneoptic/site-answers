@@ -2,16 +2,17 @@
 /**
  * Plugin Name:       Site Answers
  * Plugin URI:        https://slimanechanchoul.com/wp-chatbot/
- * Description:       A chat assistant that answers visitors from your own pages, posts and products, with numbered sources. Runs inside WordPress with your own AI key and stores no visitor questions.
+ * Description:       A chat assistant that answers visitors from your own pages, posts and products, with numbered sources. Runs inside WordPress with your own AI key and keeps no visitor questions.
  * Version:           1.0.0
  * Requires at least: 6.4
  * Requires PHP:      7.4
- * Author:            Slimane Chanchoul
+ * Author:            S'limane Chanchoul
  * Author URI:        https://slimanechanchoul.com/
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       site-answers
  * Domain Path:       /languages
+ * Update URI:        https://slimanechanchoul.com/wp-chatbot/
  *
  * @package Site_Answers
  */

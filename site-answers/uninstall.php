@@ -26,11 +26,12 @@ function site_answers_uninstall_site() {
 		delete_option( $name );
 	}
 
-	// Index shards of every generation and the per-IP counters (transients).
+	// Index shards of every generation, the daily AI answer counters and the per-IP counters (transients).
 	$names = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- One-time cleanup on uninstall.
 		$wpdb->prepare(
-			"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
+			"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 			$wpdb->esc_like( 'site_answers_shard_' ) . '%',
+			$wpdb->esc_like( 'site_answers_used_' ) . '%',
 			$wpdb->esc_like( '_transient_site_answers_' ) . '%',
 			$wpdb->esc_like( '_transient_timeout_site_answers_' ) . '%'
 		)

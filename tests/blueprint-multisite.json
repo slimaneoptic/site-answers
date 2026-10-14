@@ -1,0 +1,21 @@
+{
+  "landingPage": "/",
+  "preferredVersions": {
+    "php": "8.3",
+    "wp": "latest"
+  },
+  "login": true,
+  "steps": [
+    {
+      "step": "enableMultisite"
+    },
+    {
+      "step": "wp-cli",
+      "command": "wp site create --slug=shop --title=Shop"
+    },
+    {
+      "step": "runPHP",
+      "code": "<?php require_once '/wordpress/wp-load.php';\nupdate_option( 'permalink_structure', '/%postname%/' );\nswitch_to_blog( 2 );\nupdate_option( 'permalink_structure', '/%postname%/' );\nwp_insert_post( array( 'post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Returns',\n    'post_content' => '<!-- wp:paragraph --><p>You can return unused items within 30 days of delivery for a full refund.</p><!-- /wp:paragraph -->' ) );\nrestore_current_blog();\nflush_rewrite_rules();\n"
+    }
+  ]
+}
