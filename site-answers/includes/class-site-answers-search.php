@@ -29,6 +29,8 @@ class Site_Answers_Search {
 	 *
 	 * @param string $question Question as asked.
 	 * @param array  $args {
+	 *     Search options.
+	 *
 	 *     @type int    $k     Passages to return.
 	 *     @type string $prev  Previous question (follow-ups such as "and how much is it?").
 	 *     @type string $extra The question translated into the site language (cross-language search).
@@ -151,7 +153,7 @@ class Site_Answers_Search {
 			return array();
 		}
 
-		$best = max( array_column( $cands, 1 ) );
+		$best  = max( array_column( $cands, 1 ) );
 		$cands = array_filter(
 			$cands,
 			static function ( $c ) use ( $best ) {

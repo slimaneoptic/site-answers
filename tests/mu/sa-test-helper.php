@@ -267,6 +267,25 @@ add_action(
 		);
 		register_rest_route(
 			'sa-test/v1',
+			'/woo-update',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => $open,
+				'callback'            => function ( $r ) {
+					$product = wc_get_product( wc_get_product_id_by_sku( (string) $r['sku'] ) );
+					if ( isset( $r['price'] ) ) {
+						$product->set_regular_price( (string) $r['price'] );
+					}
+					if ( isset( $r['stock'] ) ) {
+						$product->set_stock_status( (string) $r['stock'] );
+					}
+					$product->save();
+					return array( 'id' => $product->get_id(), 'queued' => get_option( 'site_answers_queue' ) );
+				},
+			)
+		);
+		register_rest_route(
+			'sa-test/v1',
 			'/debug-log',
 			array(
 				'methods'             => 'GET',

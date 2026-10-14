@@ -41,12 +41,16 @@ class Site_Answers_Text {
 	 */
 	const SYNONYMS = array(
 		'cost costs price prices pricing fee fees tarif tarifs prix coût coûts سعر ثمن أسعار بكم' => 'price pricing tarif prix سعر ثمن',
-		'hours opening open horaires ouverture ساعات أوقات توقيت'                               => 'open opening hour am pm horaires ouvert ساعات',
-		'contact reach call phone email téléphone joindre contacter تواصل اتصل هاتف'           => 'contact phone email téléphone call',
-		'shipping ship delivery deliver livraison livrer expédition توصيل شحن الشحن'           => 'shipping delivery livraison توصيل شحن',
-		'return returns refund refunds retour retourner remboursement إرجاع إسترجاع استرداد'  => 'return refund retour remboursement إرجاع',
-		'warranty guarantee garantie ضمان'                                                     => 'warranty guarantee garantie ضمان',
-		'location address adresse عنوان موقع'                                                  => 'location address adresse عنوان',
+		'hours opening open horaires ouverture ساعات أوقات توقيت' => 'open opening hour am pm horaires ouvert ساعات',
+		'contact reach call phone email téléphone joindre contacter تواصل اتصل هاتف' => 'contact phone email téléphone call',
+		'shipping ship delivery deliver livraison livrer expédition توصيل شحن الشحن' => 'shipping delivery livraison توصيل شحن',
+		'return returns refund refunds retour retourner remboursement إرجاع إسترجاع استرداد' => 'return refund retour remboursement إرجاع',
+		'warranty guarantee garantie ضمان'        => 'warranty guarantee garantie ضمان',
+		'location address adresse عنوان موقع'     => 'location address adresse عنوان',
+		'size sizes big large small dimensions measurements wide taille grand حجم مقاس' => 'size dimensions taille',
+		'weight weigh heavy poids lourd وزن ثقيل' => 'weight poids',
+		'stock available availability disponible disponibilité متوفر' => 'stock availability',
+		'colour colours color colors couleur couleurs لون ألوان' => 'colour color couleur',
 	);
 
 	/**
@@ -179,12 +183,14 @@ class Site_Answers_Text {
 		global $shortcode_tags;
 		if ( ! empty( $shortcode_tags ) && is_array( $shortcode_tags ) ) {
 			$pattern = get_shortcode_regex();
-			for ( $i = 0; $i < 3 && preg_match( "/$pattern/", $content ); $i++ ) {
+			$rounds  = 0;
+			while ( $rounds < 3 && preg_match( "/$pattern/", $content ) ) { // Nested shortcodes need more than one pass.
+				++$rounds;
 				$content = preg_replace_callback(
 					"/$pattern/",
 					static function ( $m ) {
 						if ( '[' === $m[1] && ']' === $m[6] ) {
-							return substr( $m[0], 1, -1 ); // [[escaped]] stays as text.
+							return substr( $m[0], 1, -1 ); // A shortcode escaped with double brackets stays as text.
 						}
 						return $m[1] . ' ' . $m[5] . ' ' . $m[6];
 					},
@@ -406,7 +412,7 @@ class Site_Answers_Text {
 				$triggers = self::tokens( $triggers );
 				$group    = array_unique( array_merge( self::tokens( $extra ), $triggers ) );
 				foreach ( $triggers as $trigger ) {
-					$current                  = isset( self::$syn[ $trigger ] ) ? self::$syn[ $trigger ] : array();
+					$current               = isset( self::$syn[ $trigger ] ) ? self::$syn[ $trigger ] : array();
 					self::$syn[ $trigger ] = array_values( array_unique( array_merge( $current, array_diff( $group, array( $trigger ) ) ) ) );
 				}
 			}

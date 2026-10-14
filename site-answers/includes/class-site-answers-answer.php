@@ -46,6 +46,8 @@ class Site_Answers_Answer {
 	 * @param string $question Question (validated).
 	 * @param array  $history  Earlier turns { role, content } (validated).
 	 * @param array  $opts {
+	 *     Options.
+	 *
 	 *     @type bool $count Count it against the site's daily cap (false for the admin test box).
 	 *     @type bool $debug Add the passages, scores and errors (admin test box only).
 	 * }
@@ -117,7 +119,7 @@ class Site_Answers_Answer {
 	 * @param string $question Question.
 	 * @param array  $history  Earlier turns.
 	 * @param string $query    Optional translated query (second try after a cross-language miss).
-	 * @return array { found, passages: [ { n, title, url, text } ], foreign, site_lang, site_label, answer?, contact? }
+	 * @return array { found, passages: [ { n, title, url, text } ], foreign, site_lang, site_label, answer?, contact?, hint? }
 	 */
 	public static function passages( $question, $history, $query = '' ) {
 		$site_lang = Site_Answers_Text::site_lang();
@@ -145,6 +147,9 @@ class Site_Answers_Answer {
 		}
 		if ( ! $hits ) {
 			$out = array_merge( $out, self::not_found( $question, Site_Answers_Plugin::contact() ) );
+			if ( $out['foreign'] && '' === $query ) {
+				$out['hint'] = Site_Answers_Index::site_words(); // For the one translation try in the browser.
+			}
 		}
 		return $out;
 	}

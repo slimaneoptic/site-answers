@@ -38,7 +38,7 @@
 		return send(C.rest + 'search', { question: q, history: hist }).then(function (r) {
 			if (r.found || !r.foreign) { return r; }
 			// Nothing found and the question is in another language: one try with a translated query.
-			return send(C.demoEndpoint, { question: q, site_lang: r.site_lang, translate_query: true }, true).then(function (t) {
+			return send(C.demoEndpoint, { question: q, site_lang: r.site_lang, hint: r.hint, translate_query: true }, true).then(function (t) {
 				return t && t.query ? send(C.rest + 'search', { question: q, history: hist, query: t.query }) : r;
 			}, function () { return r; });
 		}).then(function (r) {

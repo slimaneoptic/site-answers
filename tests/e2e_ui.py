@@ -97,6 +97,7 @@ def open_widget(page):
     page.wait_for_selector(".sa-float .sa-box:not([hidden])")
 
 
+SAVE_SHOTS = os.environ.get("SA_SHOTS", "1") == "1"  # SA_SHOTS=0 keeps the committed screenshots
 REAL_KEY = os.environ.get("SA_REAL_KEY", "")  # optional: real AI in the admin test box, sent per request only
 VISITOR = [{"name": "playground_auto_login_already_happened", "value": "1", "url": BASE}]  # no Playground auto-login
 
@@ -117,7 +118,8 @@ def admin_shot(browser):
     html_text = page.content()
     check("admin page: index status and test box shown, key never in the page", "Index" in html_text and "Passages used" in html_text
           and (not REAL_KEY or REAL_KEY not in html_text))
-    page.screenshot(path=str(SHOTS / "admin-settings.png"))
+    if SAVE_SHOTS:
+        page.screenshot(path=str(SHOTS / "admin-settings.png"))
     result = page.locator("#site-answers-test-result").inner_text()
     transcript.append({"q": "admin test box: Can I return a lamp I don't like?", "text": result[:600]})
     ctx.close()
@@ -162,7 +164,8 @@ with sync_playwright() as pw:
             check("  French question answered in French", re.search(r"\b(livraison|coûte|jours|est|sont|pour)\b", a["text"]) is not None, a["text"])
         if q.startswith("كم"):
             check("  Arabic answer in Arabic, right to left", re.search(r"[؀-ۿ]", a["text"]) is not None and a["dir"] == "rtl", (a["dir"], a["text"]))
-            page.screenshot(path=str(SHOTS / "widget-arabic.png"))
+            if SAVE_SHOTS:
+                page.screenshot(path=str(SHOTS / "widget-arabic.png"))
 
     page.goto(BASE + "/")
     open_widget(page)
@@ -184,7 +187,8 @@ with sync_playwright() as pw:
     page.locator(".sa-float .sa-chip").nth(1).click()  # "What is your return policy?"
     page.wait_for_function("!document.querySelector('.sa-float .sa-wait') && document.querySelectorAll('.sa-float .sa-bot').length >= 2", timeout=90_000)
     page.wait_for_timeout(300)
-    page.screenshot(path=str(SHOTS / "widget-answer.png"))
+    if SAVE_SHOTS:
+        page.screenshot(path=str(SHOTS / "widget-answer.png"))
     first = page.locator(".sa-float .sa-src a").first
     href = first.get_attribute("href")
     first.click()

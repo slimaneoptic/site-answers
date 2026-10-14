@@ -57,6 +57,15 @@ def local_blueprint(php: str) -> dict:
     }
 
 
+def woo_blueprint() -> dict:
+    """Local test only: WooCommerce from wordpress.org, the demo store, then five products and a hidden one."""
+    bp = local_blueprint("8.3")
+    bp["steps"] = [{"step": "installPlugin", "pluginData": {"resource": "wordpress.org/plugins", "slug": "woocommerce"},
+                    "options": {"activate": True}}] + bp["steps"] + [
+        {"step": "runPHP", "code": (ROOT / "tests" / "woo-products.php").read_text(encoding="utf-8")}]
+    return bp
+
+
 def build_zip(out: Path) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     files = sorted(p for p in PLUGIN.rglob("*") if p.is_file() and p.name not in SKIP)
@@ -75,6 +84,8 @@ def main() -> None:
     for php in ("7.4", "8.3"):
         (ROOT / "tests" / f"blueprint-local-{php}.json").write_text(
             json.dumps(local_blueprint(php), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (ROOT / "tests" / "blueprint-woo.json").write_text(json.dumps(woo_blueprint(), indent=2, ensure_ascii=False) + "\n",
+                                                       encoding="utf-8")
     size = build_zip(ROOT / "dist" / "site-answers.zip")
     print(f"blueprint: {args.out}\nlocal blueprints: tests/blueprint-local-7.4.json, -8.3.json\nzip: dist/site-answers.zip ({size} bytes)")
 

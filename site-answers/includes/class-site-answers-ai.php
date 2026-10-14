@@ -28,9 +28,9 @@ class Site_Answers_AI {
 		if ( '' === $key ) {
 			return new WP_Error( 'site_answers_no_key', __( 'No AI key is saved.', 'site-answers' ) );
 		}
-		$s    = Site_Answers_Plugin::settings();
-		$base = untrailingslashit( $s['base_url'] );
-		$body = array(
+		$s       = Site_Answers_Plugin::settings();
+		$base    = untrailingslashit( $s['base_url'] );
+		$body    = array(
 			'model'       => $s['model'],
 			'messages'    => $messages,
 			'max_tokens'  => (int) $max_tokens,
@@ -189,11 +189,13 @@ class Site_Answers_AI {
 			'nl' => 'Dutch',
 		);
 		$language = isset( $names[ $site_lang ] ) ? $names[ $site_lang ] : $site_lang;
+		$hint     = Site_Answers_Index::site_words();
 		$reply    = self::chat(
 			array(
 				array(
 					'role'    => 'system',
-					'content' => 'Translate the visitor\'s question into ' . $language . ' as a short search query for this website. Reply with the translation only, on one line.',
+					'content' => 'Translate the visitor\'s search question into ' . $language . '. Reply with the translation only, on one line.'
+						. ( '' !== $hint ? ' Where they fit the meaning, use the words this website uses: ' . $hint . '.' : '' ),
 				),
 				array(
 					'role'    => 'user',

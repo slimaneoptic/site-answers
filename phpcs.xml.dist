@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<ruleset name="Site Answers">
+	<description>WordPress Coding Standards for the Site Answers plugin.</description>
+	<file>site-answers</file>
+	<arg name="extensions" value="php"/>
+	<arg value="s"/>
+	<config name="minimum_wp_version" value="6.4"/>
+	<config name="testVersion" value="7.4-"/>
+	<rule ref="WordPress"/>
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="site-answers"/>
+			</property>
+		</properties>
+	</rule>
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="site_answers"/>
+				<element value="Site_Answers"/>
+			</property>
+		</properties>
+	</rule>
+</ruleset>

@@ -441,7 +441,7 @@ class Site_Answers_Index {
 		while ( $types ) {
 			$in  = implode( ', ', array_fill( 0, count( $types ), '%s' ) );
 			$ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ID cursor over posts, cached per post by get_post().
-				$wpdb->prepare(
+				$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- One array holds all the values.
 					"SELECT ID FROM {$wpdb->posts} WHERE ID > %d AND post_status = 'publish' AND post_password = '' AND post_type IN ($in) ORDER BY ID ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in holds only %s placeholders.
 					array_merge( array( (int) $state['after'] ), $types, array( self::BATCH ) )
 				)
@@ -500,10 +500,10 @@ class Site_Answers_Index {
 		$i = (int) $state['cur'];
 		if ( $state['shards'][ $i ]['passages'] > 0 && $state['shards'][ $i ]['passages'] + count( $doc['c'] ) > self::SHARD_PASSAGES ) {
 			self::write_shard( $state['gen'], $i, $cur );
-			$i                        = $i + 1;
-			$state['cur']             = $i;
-			$state['shards'][ $i ]    = self::empty_info();
-			$cur                      = array();
+			++$i;
+			$state['cur']          = $i;
+			$state['shards'][ $i ] = self::empty_info();
+			$cur                   = array();
 		}
 		$cur[ $id ]          = $doc;
 		$state['map'][ $id ] = $i;
@@ -677,7 +677,7 @@ class Site_Answers_Index {
 			}
 			unset( $meta['map'][ $post_id ] );
 			if ( $doc && $meta['shards'][ $i ]['passages'] + count( $doc['c'] ) <= self::SHARD_PASSAGES ) {
-				$shard[ $post_id ]        = $doc; // Same shard: one write.
+				$shard[ $post_id ]       = $doc; // Same shard: one write.
 				$meta['map'][ $post_id ] = $i;
 				self::count_doc( $meta['shards'][ $i ], $doc, 1 );
 				$doc = null;
@@ -748,6 +748,36 @@ class Site_Answers_Index {
 			'docs'   => $docs,
 		);
 		return self::$passages;
+	}
+
+	/**
+	 * Page titles and the words most passages use, comma-separated: a hint for translating a question into the
+	 * site's own words ("refund" rather than "reimbursement"), so the translated search finds them.
+	 *
+	 * @return string At most 900 characters.
+	 */
+	public static function site_words() {
+		$index  = self::passages();
+		$titles = array();
+		foreach ( $index['docs'] as $doc ) {
+			$titles[ $doc['title'] ] = true;
+			if ( count( $titles ) >= 8 ) {
+				break;
+			}
+		}
+		$df = array();
+		foreach ( array_slice( $index['chunks'], 0, 400 ) as $chunk ) {
+			$lower = function_exists( 'mb_strtolower' ) ? mb_strtolower( $chunk['text'], 'UTF-8' ) : strtolower( $chunk['text'] );
+			preg_match_all( '/\p{L}{4,}/u', $lower, $m );
+			foreach ( array_unique( $m[0] ) as $word ) {
+				if ( ! Site_Answers_Text::is_stop( Site_Answers_Text::stem( Site_Answers_Text::normalize( $word ) ) ) ) {
+					$df[ $word ] = isset( $df[ $word ] ) ? $df[ $word ] + 1 : 1;
+				}
+			}
+		}
+		arsort( $df );
+		$words = array_merge( array_keys( $titles ), array_map( 'strval', array_slice( array_keys( $df ), 0, 40 ) ) );
+		return mb_substr( implode( ', ', $words ), 0, 900 );
 	}
 
 	/**

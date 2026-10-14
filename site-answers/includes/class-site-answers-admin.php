@@ -591,12 +591,12 @@ class Site_Answers_Admin {
 	/**
 	 * The indexed post types changed: rebuild.
 	 *
-	 * @param array $old Old settings.
-	 * @param array $new New settings.
+	 * @param array $old_value Old settings.
+	 * @param array $value     New settings.
 	 */
-	public static function settings_changed( $old, $new ) {
-		$before = isset( $old['post_types'] ) ? (array) $old['post_types'] : array();
-		$after  = isset( $new['post_types'] ) ? (array) $new['post_types'] : array();
+	public static function settings_changed( $old_value, $value ) {
+		$before = isset( $old_value['post_types'] ) ? (array) $old_value['post_types'] : array();
+		$after  = isset( $value['post_types'] ) ? (array) $value['post_types'] : array();
 		sort( $before );
 		sort( $after );
 		if ( $before !== $after ) {

@@ -7,6 +7,6 @@ exec tools/node_modules/.bin/wp-playground-cli server \
   --port="$PORT" --php="$PHPV" --wp=latest \
   --mount="$PWD/site-answers:/wordpress/wp-content/plugins/site-answers" \
   --mount="$PWD/tests/mu/sa-test-helper.php:/wordpress/wp-content/mu-plugins/sa-test-helper.php" \
-  --blueprint="$PWD/tests/blueprint-local-$PHPV.json" \
+  --blueprint="${BLUEPRINT:-$PWD/tests/blueprint-local-$PHPV.json}" \
   --define-bool WP_DEBUG true --define-bool WP_DEBUG_LOG true \
   --login "$@"
